@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins by Vladislav Karpman",
-    "version": "1.0.0"
+    "version": "1.0.1"
   },
   "plugins": [
     {
@@ -15,7 +15,7 @@
         "source": "url",
         "url": "https://github.com/vladkarpman/mobile-ui-testing.git"
       },
-      "description": "YAML-based mobile UI testing framework with mobile-mcp",
+      "description": "YAML-based mobile UI testing framework with mobile-mcp. Auto-permissions, test recording, HTML reports.",
       "version": "2.0.0",
       "strict": true
     }
