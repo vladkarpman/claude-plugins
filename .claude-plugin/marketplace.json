@@ -16,7 +16,7 @@
         "url": "https://github.com/vladkarpman/mobile-ui-testing.git"
       },
       "description": "YAML-based mobile UI testing framework with mobile-mcp. Auto-permissions, test recording, HTML reports.",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "strict": true
     }
   ]
