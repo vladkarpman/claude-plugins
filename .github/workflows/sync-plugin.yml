@@ -1,0 +1,29 @@
+name: Sync Plugin Version
+
+on:
+  repository_dispatch:
+    types: [plugin_release]
+  workflow_dispatch:
+    inputs:
+      plugin_name:
+        description: 'Plugin name'
+        required: true
+      version:
+        description: 'Version tag (e.g., v3.2.0)'
+        required: true
+      repo_url:
+        description: 'Plugin repository URL'
+        required: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout marketplace
+        uses: actions/checkout@v4
+
+      - name: Log received payload
+        run: |
+          echo "Plugin: ${{ github.event.client_payload.plugin_name || github.event.inputs.plugin_name }}"
+          echo "Version: ${{ github.event.client_payload.version || github.event.inputs.version }}"
+          echo "Repo: ${{ github.event.client_payload.repo_url || github.event.inputs.repo_url }}"
