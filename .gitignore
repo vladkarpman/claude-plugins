@@ -1,0 +1,21 @@
+# Plans and archives
+docs/plans/
+docs/archive/
+
+# OS files
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
