@@ -16,7 +16,7 @@ claude plugin install <plugin-name>
 
 | Plugin | Description | Version |
 |--------|-------------|---------|
-| [mobile-ui-testing](https://github.com/vladkarpman/mobile-ui-testing) | YAML-based mobile UI testing framework with mobile-mcp | 3.1.0 |
+| [mobile-ui-testing](https://github.com/vladkarpman/mobile-ui-testing) | YAML-based mobile UI testing framework with mobile-mcp | 3.3.1 |
 | [compose-designer](https://github.com/vladkarpman/compose-designer-plugin) | Transform design mockups into production-ready Jetpack Compose code | 0.1.0 |
 
 ## Plugins
