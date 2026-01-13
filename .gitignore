@@ -1,6 +1,8 @@
 # Plans and archives
 docs/plans/
 docs/archive/
+plugins/*/plans/
+plugins/*/archive/
 
 # OS files
 .DS_Store

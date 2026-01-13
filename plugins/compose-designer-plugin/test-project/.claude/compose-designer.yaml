@@ -40,9 +40,9 @@ testing:
 
 # Figma integration
 figma:
-  extract_tokens: false
+  extract_tokens: true
   api_token_source: "env"
-  api_token: ""
+  # Set FIGMA_TOKEN environment variable to use Figma API
   fallback_to_image: true
 
 # Output preferences

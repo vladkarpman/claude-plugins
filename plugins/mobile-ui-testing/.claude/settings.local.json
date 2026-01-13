@@ -22,5 +22,9 @@
       "Bash(ffprobe:*)",
       "Bash(/Users/vladislavkarpman/StudioProjects/mobile-ui-testing/scripts/check-ffmpeg.sh:*)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "mobile-mcp"
+  ],
+  "enableAllProjectMcpServers": true
 }
