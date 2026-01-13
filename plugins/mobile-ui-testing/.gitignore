@@ -1,0 +1,10 @@
+# Test artifacts (generated tests only)
+# Ignore all tests/* except integration tests
+tests/*
+!tests/integration/
+
+# Recording state (temporary)
+.claude/recording-state.json
+
+# Git worktrees (isolated development branches)
+.worktrees/

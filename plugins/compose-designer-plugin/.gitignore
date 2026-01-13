@@ -1,0 +1,30 @@
+# Claude Code local settings
+.claude/*.local.md
+.claude/compose-designer.local.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+
+# Temporary artifacts
+/tmp/
+*.tmp
+*.temp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build artifacts
+*.log

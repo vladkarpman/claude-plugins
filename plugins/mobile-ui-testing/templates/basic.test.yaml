@@ -1,0 +1,23 @@
+# Basic Test Template
+# Minimal template for simple test scenarios
+
+config:
+  app: com.your.app.package  # TODO: Replace with your app package
+
+setup:
+  - terminate_app
+  - launch_app
+  - wait: 3s
+
+teardown:
+  - terminate_app
+
+tests:
+  - name: Basic functionality test
+    description: Verify basic app functionality
+    timeout: 60s
+    steps:
+      # TODO: Add your test steps here
+      - wait_for: "Home"
+      - screenshot: initial_state
+      - verify_screen: "App launched successfully"

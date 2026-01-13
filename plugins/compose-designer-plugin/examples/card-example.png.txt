@@ -1,0 +1,5 @@
+Placeholder: card-example.png
+TODO: Replace with actual screenshot of a card design
+
+For testing, use your own design screenshot:
+/compose-design create --input your-card.png --name TestCard --type component

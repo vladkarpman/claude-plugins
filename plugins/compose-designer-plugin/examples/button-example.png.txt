@@ -1,0 +1,5 @@
+Placeholder: button-example.png
+TODO: Replace with actual screenshot of a button design
+
+For testing, use your own design screenshot:
+/compose-design create --input your-button.png --name TestButton --type component

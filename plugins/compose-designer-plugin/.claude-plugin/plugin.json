@@ -1,0 +1,19 @@
+{
+  "name": "compose-designer",
+  "version": "0.2.0",
+  "description": "Transform design mockups (screenshots, Figma) into production-ready Jetpack Compose code with automated validation and device testing",
+  "author": {
+    "name": "Vladislav Karpman",
+    "url": "https://github.com/vladkarpman/vladkarpman-plugins"
+  },
+  "homepage": "https://github.com/vladkarpman/vladkarpman-plugins/tree/main/compose-designer",
+  "repository": "https://github.com/vladkarpman/vladkarpman-plugins",
+  "license": "MIT",
+  "keywords": ["compose", "android", "design", "figma", "ui-generation", "code-generation", "mobile"],
+  "agents": [
+    "./agents/baseline-preprocessor.md",
+    "./agents/design-generator.md",
+    "./agents/visual-validator.md",
+    "./agents/device-tester.md"
+  ]
+}

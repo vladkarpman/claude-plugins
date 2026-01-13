@@ -1,0 +1,116 @@
+# Form Input Test Template
+# Tests form validation and submission
+
+config:
+  app: com.your.app.package  # TODO: Replace with your app package
+
+setup:
+  - terminate_app
+  - launch_app
+  - wait: 3s
+
+teardown:
+  - terminate_app
+
+tests:
+  - name: Submit valid form
+    description: Form submits successfully with valid data
+    timeout: 90s
+    tags: [forms, smoke]
+    steps:
+      # Navigate to form (adjust for your app)
+      - wait_for: "Home"
+      - tap: "Contact"
+      - wait: 1s
+
+      # Fill form fields
+      - tap: "Name"
+      - type: "John Doe"
+
+      - tap: "Email"
+      - type: "john.doe@example.com"
+
+      - tap: "Phone"
+      - type: "+1234567890"
+
+      - tap: "Message"
+      - type: "This is a test message for form validation."
+
+      # Hide keyboard if needed
+      - press: back
+      - wait: 500ms
+
+      - screenshot: form_filled
+
+      # Submit
+      - tap: "Submit"
+      - wait: 2s
+
+      - verify_screen: "Form submitted successfully"
+      - screenshot: form_success
+
+  - name: Form validation - empty required fields
+    description: Error shown when required fields empty
+    timeout: 60s
+    tags: [forms, validation]
+    steps:
+      - wait_for: "Home"
+      - tap: "Contact"
+      - wait: 1s
+
+      # Try to submit empty form
+      - tap: "Submit"
+      - wait: 1s
+
+      - verify_contains: "required"
+      - screenshot: form_validation_error
+
+  - name: Form validation - invalid email
+    description: Error shown for invalid email format
+    timeout: 60s
+    tags: [forms, validation]
+    steps:
+      - wait_for: "Home"
+      - tap: "Contact"
+      - wait: 1s
+
+      - tap: "Name"
+      - type: "John Doe"
+
+      - tap: "Email"
+      - type: "invalid-email"  # Invalid format
+
+      - tap: "Submit"
+      - wait: 1s
+
+      - verify_contains: "valid email"
+      - screenshot: email_validation_error
+
+  - name: Form clears after submission
+    description: Form resets after successful submission
+    timeout: 90s
+    tags: [forms]
+    steps:
+      - wait_for: "Home"
+      - tap: "Contact"
+      - wait: 1s
+
+      # Fill and submit
+      - tap: "Name"
+      - type: "Test User"
+      - tap: "Email"
+      - type: "test@example.com"
+      - tap: "Submit"
+      - wait: 2s
+
+      # Verify success and navigate back
+      - if_present: "OK"
+        then:
+          - tap: "OK"
+          - wait: 500ms
+
+      # Check form is cleared
+      - tap: "Contact"
+      - wait: 1s
+      - verify_no_element: "Test User"
+      - verify_no_element: "test@example.com"

@@ -1,0 +1,105 @@
+name: Create Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.claude-plugin/marketplace.json'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.2.0)'
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history for changelog
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            # Extract marketplace version from marketplace.json
+            VERSION="v$(jq -r '.metadata.version' .claude-plugin/marketplace.json)"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse "${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag already exists, skipping release"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate changelog
+        if: steps.check_tag.outputs.exists == 'false'
+        id: changelog
+        run: |
+          # Get the last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -z "$LAST_TAG" ]; then
+            echo "First release - no previous tag"
+            CHANGELOG="Initial marketplace release"
+          else
+            echo "Generating changelog since $LAST_TAG"
+            CHANGELOG=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          fi
+
+          # Get plugin versions
+          PLUGIN_VERSIONS=$(jq -r '.plugins[] | "- **\(.name)**: v\(.version)"' .claude-plugin/marketplace.json)
+
+          # Build release notes
+          cat << EOF > release_notes.md
+          ## Plugin Versions
+
+          $PLUGIN_VERSIONS
+
+          ## Changes
+
+          $CHANGELOG
+
+          ## Installation
+
+          \`\`\`bash
+          # Add marketplace (one time)
+          claude plugin marketplace add vladkarpman/vladkarpman-plugins
+
+          # Install plugins
+          claude plugin install mobile-ui-testing
+          claude plugin install compose-designer
+          \`\`\`
+          EOF
+
+          cat release_notes.md
+
+      - name: Create Release
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          release_name: Release ${{ steps.version.outputs.version }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false

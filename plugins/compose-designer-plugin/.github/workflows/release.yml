@@ -1,0 +1,97 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG#v}
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Validate version matches plugin.json
+        run: |
+          PLUGIN_VERSION=$(jq -r '.version' .claude-plugin/plugin.json)
+          if [ "$PLUGIN_VERSION" != "${{ steps.version.outputs.version }}" ]; then
+            echo "❌ Version mismatch!"
+            echo "  Tag version: ${{ steps.version.outputs.version }}"
+            echo "  plugin.json version: $PLUGIN_VERSION"
+            exit 1
+          fi
+          echo "✓ Version validated: $PLUGIN_VERSION"
+
+      - name: Create plugin archive
+        run: |
+          # Create zip excluding unnecessary files
+          zip -r compose-designer-${{ steps.version.outputs.version }}.zip . \
+            -x "*.git*" \
+            -x "docs/*" \
+            -x ".github/*" \
+            -x "*.md"
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          cat > release_notes.md << 'EOF'
+          ## Compose Designer v${{ steps.version.outputs.version }}
+
+          ### Installation
+
+          ```bash
+          # Via marketplace (recommended)
+          claude plugin install compose-designer@vladkarpman-plugins
+
+          # Direct from GitHub
+          claude plugin install https://github.com/vladkarpman/compose-designer-plugin.git
+          ```
+
+          ### What's Changed
+
+          See commit history for detailed changes.
+
+          ### Requirements
+
+          - Claude Code CLI
+          - Python 3.x with packages: `scikit-image`, `pillow`, `numpy`
+          - Android SDK (for device testing)
+          - Gradle (for compilation checks)
+
+          ### Optional Dependencies
+
+          - Ralph-wiggum plugin (for visual validation)
+          - Mobile-mcp plugin (for device testing)
+
+          **Full Changelog**: https://github.com/vladkarpman/compose-designer-plugin/commits/${{ steps.version.outputs.tag }}
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: release_notes.md
+          files: |
+            compose-designer-${{ steps.version.outputs.version }}.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release summary
+        run: |
+          echo "🎉 Released compose-designer v${{ steps.version.outputs.version }}"
+          echo "📦 Archive: compose-designer-${{ steps.version.outputs.version }}.zip"
+          echo "🔗 URL: https://github.com/vladkarpman/compose-designer-plugin/releases/tag/${{ steps.version.outputs.tag }}"

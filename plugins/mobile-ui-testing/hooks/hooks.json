@@ -1,0 +1,26 @@
+{
+  "description": "Auto-approve mobile-mcp tools for seamless test execution",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "mcp__mobile-mcp__*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"decision\": \"approve\"}'"
+          }
+        ]
+      }
+    ]
+  }
+}

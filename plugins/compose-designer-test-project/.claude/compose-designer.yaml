@@ -1,0 +1,53 @@
+# Compose Designer Plugin Configuration
+# Generated for test project
+
+# Project conventions
+naming:
+  component_suffix: "Component"
+  screen_suffix: "Screen"
+  preview_annotation: "@Preview"
+
+# Code generation
+architecture:
+  stateless_components: true
+  state_hoisting: true
+  remember_saveable: false
+
+# Preview settings
+preview:
+  show_background: true
+  background_color: "#FFFFFF"
+  device_spec: "spec:width=411dp,height=891dp"
+  font_scale: 1.0
+
+# Validation thresholds
+validation:
+  visual_similarity_threshold: 0.92
+  max_ralph_iterations: 10
+  preview_screenshot_delay: "auto"
+
+# Batch processing
+batch:
+  mode: "sequential"
+
+# Device testing
+testing:
+  test_activity_package: "com.test.composedesigner.test"
+  test_activity_name: "ComposeTestActivity"
+  device_id: "auto"
+  interaction_depth: "comprehensive"
+  cleanup_artifacts: "ask"
+
+# Figma integration
+figma:
+  extract_tokens: false
+  api_token_source: "env"
+  api_token: ""
+  fallback_to_image: true
+
+# Output preferences
+output:
+  package_base: "com.test.composedesigner"
+  default_output_dir: "app/src/main/java"
+  include_comments: false
+  extract_theme_from_existing: true

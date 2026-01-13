@@ -1,0 +1,112 @@
+# Navigation Test Template
+# Tests bottom navigation and screen transitions
+
+config:
+  app: com.your.app.package  # TODO: Replace with your app package
+
+setup:
+  - terminate_app
+  - launch_app
+  - wait: 3s
+  # Skip onboarding if present
+  - repeat:
+      times: 5
+      steps:
+        - if_present: "Skip"
+          then:
+            - tap: "Skip"
+            - wait: 500ms
+        - if_present: "Continue"
+          then:
+            - tap: "Continue"
+            - wait: 500ms
+        - if_present: "Get Started"
+          then:
+            - tap: "Get Started"
+            - wait: 500ms
+
+teardown:
+  - terminate_app
+
+tests:
+  - name: Navigate to all tabs
+    description: Cycle through bottom navigation tabs
+    timeout: 120s
+    tags: [navigation, smoke]
+    steps:
+      # Home tab
+      - wait_for: "Home"
+      - tap: "Home"
+      - wait: 1s
+      - screenshot: nav_home
+      - verify_screen: "Home tab displayed"
+
+      # TODO: Add your app's navigation tabs
+      # Example tabs - replace with your actual tabs
+
+      # Search tab
+      - tap: "Search"
+      - wait: 1s
+      - screenshot: nav_search
+      - verify_screen: "Search tab displayed"
+
+      # Profile tab
+      - tap: "Profile"
+      - wait: 1s
+      - screenshot: nav_profile
+      - verify_screen: "Profile tab displayed"
+
+      # Back to Home
+      - tap: "Home"
+      - wait: 1s
+      - verify_screen: "Home tab displayed after navigation cycle"
+
+  - name: Back button navigation
+    description: Back button returns to previous screen
+    timeout: 60s
+    tags: [navigation]
+    steps:
+      - wait_for: "Home"
+
+      # Navigate to detail screen
+      - tap: "Settings"
+      - wait: 1s
+      - verify_screen: "Settings screen"
+
+      # Go back
+      - press: back
+      - wait: 1s
+      - verify_screen: "Home screen after back navigation"
+
+  - name: Deep navigation and back stack
+    description: Navigate deep and verify back stack
+    timeout: 90s
+    tags: [navigation]
+    steps:
+      - wait_for: "Home"
+
+      # Level 1
+      - tap: "Settings"
+      - wait: 1s
+
+      # Level 2
+      - tap: "Account"
+      - wait: 1s
+
+      # Level 3
+      - tap: "Privacy"
+      - wait: 1s
+      - screenshot: deep_navigation
+
+      # Navigate back through stack
+      - press: back
+      - wait: 500ms
+      - verify_screen: "Account screen"
+
+      - press: back
+      - wait: 500ms
+      - verify_screen: "Settings screen"
+
+      - press: back
+      - wait: 500ms
+      - verify_screen: "Home screen"

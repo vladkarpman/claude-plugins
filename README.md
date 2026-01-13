@@ -16,8 +16,8 @@ claude plugin install <plugin-name>
 
 | Plugin | Description | Version |
 |--------|-------------|---------|
-| [mobile-ui-testing](https://github.com/vladkarpman/mobile-ui-testing) | YAML-based mobile UI testing framework with mobile-mcp | 3.3.1 |
-| [compose-designer](https://github.com/vladkarpman/compose-designer-plugin) | Transform design mockups into production-ready Jetpack Compose code | 0.1.0 |
+| [mobile-ui-testing](#mobile-ui-testing) | YAML-based mobile UI testing framework with mobile-mcp | 3.3.1 |
+| [compose-designer](#compose-designer) | Transform design mockups into production-ready Jetpack Compose code | 0.2.0 |
 
 ## Plugins
 
@@ -48,7 +48,7 @@ claude plugin install mobile-ui-testing
 /run-test tests/login/test.yaml
 ```
 
-See [full documentation](https://github.com/vladkarpman/mobile-ui-testing) for details.
+See [full documentation](./plugins/mobile-ui-testing) for details.
 
 ### compose-designer
 
@@ -74,7 +74,7 @@ claude plugin install compose-designer
 /compose-design create --input design.png --name MyComponent --type component
 ```
 
-See [full documentation](https://github.com/vladkarpman/compose-designer-plugin) for details.
+See [full documentation](./plugins/compose-designer-plugin) for details.
 
 ## Quick Start
 

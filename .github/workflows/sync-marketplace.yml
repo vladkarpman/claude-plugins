@@ -1,0 +1,82 @@
+name: Sync Marketplace Versions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/*/.claude-plugin/plugin.json'
+  pull_request:
+    paths:
+      - 'plugins/*/.claude-plugin/plugin.json'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  sync-versions:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Run version sync
+        id: sync
+        run: |
+          ./scripts/sync-versions.sh
+
+          # Check if marketplace.json changed
+          if git diff --quiet .claude-plugin/marketplace.json; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No version changes detected"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Version changes detected!"
+          fi
+
+      - name: Commit version updates
+        if: steps.sync.outputs.changed == 'true' && github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .claude-plugin/marketplace.json
+          git commit -m "chore: sync marketplace versions
+
+          Auto-synced by sync-marketplace workflow"
+          git push
+
+      - name: Create PR comment (if PR)
+        if: steps.sync.outputs.changed == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = `#### ⚠️ Marketplace Version Sync Required
+
+            Plugin version changes detected. The marketplace.json needs to be updated.
+
+            Run locally:
+            \`\`\`bash
+            ./scripts/sync-versions.sh
+            git add .claude-plugin/marketplace.json
+            git commit -m "chore: sync marketplace versions"
+            \`\`\`
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+      - name: Fail PR if out of sync
+        if: steps.sync.outputs.changed == 'true' && github.event_name == 'pull_request'
+        run: |
+          echo "::error::Marketplace versions are out of sync. Run ./scripts/sync-versions.sh"
+          exit 1
