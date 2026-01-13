@@ -26,7 +26,7 @@
         "url": "https://github.com/vladkarpman/compose-designer-plugin.git"
       },
       "description": "Transform design mockups into production-ready Jetpack Compose code through automated three-phase workflow with visual validation and device testing.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "strict": true
     }
   ]
