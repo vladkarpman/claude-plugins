@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins by Vladislav Karpman",
-    "version": "1.0.1"
+    "version": "1.1.0"
   },
   "plugins": [
     {
@@ -17,6 +17,16 @@
       },
       "description": "YAML-based mobile UI testing framework with mobile-mcp. Auto-permissions, test recording, HTML reports.",
       "version": "3.1.0",
+      "strict": true
+    },
+    {
+      "name": "compose-designer",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/vladkarpman/compose-designer-plugin.git"
+      },
+      "description": "Transform design mockups into production-ready Jetpack Compose code through automated three-phase workflow with visual validation and device testing.",
+      "version": "0.1.0",
       "strict": true
     }
   ]

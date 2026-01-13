@@ -17,6 +17,7 @@ claude plugin install <plugin-name>
 | Plugin | Description | Version |
 |--------|-------------|---------|
 | [mobile-ui-testing](https://github.com/vladkarpman/mobile-ui-testing) | YAML-based mobile UI testing framework with mobile-mcp | 3.1.0 |
+| [compose-designer](https://github.com/vladkarpman/compose-designer-plugin) | Transform design mockups into production-ready Jetpack Compose code | 0.1.0 |
 
 ## Plugins
 
@@ -49,14 +50,41 @@ claude plugin install mobile-ui-testing
 
 See [full documentation](https://github.com/vladkarpman/mobile-ui-testing) for details.
 
+### compose-designer
+
+Transform design mockups (screenshots, Figma designs) into production-ready Jetpack Compose code through automated three-phase workflow with visual validation and device testing.
+
+**Features:**
+- Multi-input support (screenshots, Figma, clipboard, batch processing)
+- Ralph-wiggum visual validation loop (92%+ similarity)
+- Mobile-mcp device testing integration
+- Theme extraction from existing code
+- Production-ready idiomatic Compose code
+
+**Commands:**
+- `/compose-design config` - Interactive configuration wizard
+- `/compose-design create` - Generate Compose code from design
+
+**Quick Start:**
+```bash
+claude plugin install compose-designer
+
+# Then in Claude Code:
+/compose-design config
+/compose-design create --input design.png --name MyComponent --type component
+```
+
+See [full documentation](https://github.com/vladkarpman/compose-designer-plugin) for details.
+
 ## Quick Start
 
 ```bash
 # Add marketplace
 claude plugin marketplace add vladkarpman/vladkarpman-plugins
 
-# Install mobile-ui-testing
+# Install any plugin
 claude plugin install mobile-ui-testing
+claude plugin install compose-designer
 
 # Restart Claude Code to activate
 ```
