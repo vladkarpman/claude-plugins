@@ -8,6 +8,9 @@ allowed-tools:
   - Glob
   - Bash
   - AskUserQuestion
+  # device-manager-mcp (preferred - faster)
+  - mcp__device-manager__device_list
+  # mobile-mcp (fallback)
   - mcp__mobile-mcp__mobile_list_available_devices
 ---
 
@@ -67,7 +70,7 @@ Store result as `{APP_PACKAGE}`.
 
 ### Step 4: Get Device
 
-**Tool:** `mcp__mobile-mcp__mobile_list_available_devices`
+**Tool:** `mcp__device-manager__device_list` (preferred) or `mcp__mobile-mcp__mobile_list_available_devices` (fallback)
 
 **If 0 devices:** Stop and show:
 ```
