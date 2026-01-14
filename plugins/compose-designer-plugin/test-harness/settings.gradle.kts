@@ -5,10 +5,10 @@ pluginManagement {
         gradlePluginPortal()
     }
     plugins {
-        id("com.android.library") version "8.2.2"
-        id("org.jetbrains.kotlin.android") version "2.0.0"
-        id("org.jetbrains.kotlin.plugin.compose") version "2.0.0"
-        id("app.cash.paparazzi") version "1.3.4"
+        id("com.android.library") version "8.7.3"
+        id("org.jetbrains.kotlin.android") version "2.1.0"
+        id("org.jetbrains.kotlin.plugin.compose") version "2.1.0"
+        id("app.cash.paparazzi") version "1.3.5"
     }
 }
 

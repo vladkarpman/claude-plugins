@@ -7,9 +7,12 @@ Usage:
   python3 generate-paparazzi-test.py \\
     --component JetNewsCardComponent \\
     --preview JetNewsCardComponentPreview \\
-    --package com.test.composedesigner \\
     --output test-harness/src/test/kotlin/generated \\
     --device-config PIXEL_5
+
+Note:
+  The generated test assumes the component is copied to the test harness
+  with package "generated", so no import is needed for the preview function.
 
 Returns:
   Path to generated test file printed to stdout
@@ -50,13 +53,14 @@ VALID_DEVICE_CONFIGS = [
 ]
 
 # Template for the generated test file
+# Note: Component is copied to test-harness/src/main/kotlin/generated/ with package "generated"
+# Both test and component are in the same package, so no import needed for preview function
 TEST_TEMPLATE = '''package generated
 
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
 import org.junit.Rule
 import org.junit.Test
-import {package_name}.{preview_function}
 
 class {component_name}Test {{
     @get:Rule
@@ -111,28 +115,9 @@ def is_valid_kotlin_identifier(name: str) -> bool:
     return True
 
 
-def is_valid_package_name(package: str) -> bool:
-    """
-    Check if a string is a valid Kotlin/Java package name.
-    """
-    if not package:
-        return False
-
-    parts = package.split('.')
-    for part in parts:
-        if not part:
-            return False
-        # Package parts must be valid identifiers (lowercase by convention)
-        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', part):
-            return False
-
-    return True
-
-
 def generate_test_file(
     component_name: str,
     preview_function: str,
-    package_name: str,
     output_dir: Path,
     device_config: str
 ) -> Path:
@@ -142,18 +127,20 @@ def generate_test_file(
     Args:
         component_name: Name of the component (e.g., "JetNewsCardComponent")
         preview_function: Name of the @Preview function
-        package_name: Package of the component
         output_dir: Output directory for the test file
         device_config: Paparazzi device configuration
 
     Returns:
         Path to the generated test file
+
+    Note:
+        The generated test assumes the component is copied to the test harness
+        with package "generated", so both test and component share the same package.
     """
     # Generate the test content
     content = TEST_TEMPLATE.format(
         component_name=component_name,
         preview_function=preview_function,
-        package_name=package_name,
         device_config=device_config
     )
 
@@ -172,7 +159,7 @@ def generate_test_file(
 def main():
     parser = argparse.ArgumentParser(
         description='Generate Paparazzi snapshot test files for Compose components',
-        epilog='Example: python3 generate-paparazzi-test.py --component MyButton --preview MyButtonPreview --package com.example.ui'
+        epilog='Example: python3 generate-paparazzi-test.py --component MyButton --preview MyButtonPreview'
     )
     parser.add_argument(
         '--component',
@@ -183,11 +170,6 @@ def main():
         '--preview',
         required=True,
         help='Name of the @Preview function (e.g., JetNewsCardComponentPreview)'
-    )
-    parser.add_argument(
-        '--package',
-        required=True,
-        help='Package name of the component (e.g., com.test.composedesigner)'
     )
     parser.add_argument(
         '--output',
@@ -214,12 +196,6 @@ def main():
         print("Preview function name must be a valid Kotlin identifier", file=sys.stderr)
         sys.exit(1)
 
-    # Validate package name
-    if not is_valid_package_name(args.package):
-        print(f"Error: Invalid package name: '{args.package}'", file=sys.stderr)
-        print("Package name must be a valid Kotlin/Java package (e.g., com.example.app)", file=sys.stderr)
-        sys.exit(1)
-
     # Validate device config
     if args.device_config not in VALID_DEVICE_CONFIGS:
         print(f"Error: Invalid device config: '{args.device_config}'", file=sys.stderr)
@@ -238,7 +214,6 @@ def main():
     output_path = generate_test_file(
         component_name=args.component,
         preview_function=args.preview,
-        package_name=args.package,
         output_dir=output_dir,
         device_config=args.device_config
     )

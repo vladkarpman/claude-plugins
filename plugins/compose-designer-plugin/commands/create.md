@@ -1,6 +1,6 @@
 ---
 name: create
-description: Generate Compose code from design input (screenshot/Figma/clipboard) through three-phase workflow
+description: Generate Compose code from design input (screenshot/Figma/clipboard) through four-phase workflow with Paparazzi and device validation
 argument-hint: --input <path|url> --name <ComponentName> --type <component|screen> [--clipboard] [--batch] [--device <device-id>]
 allowed-tools:
   - Read
@@ -55,15 +55,23 @@ Generate Jetpack Compose code from design input with automated validation and de
 - Pass Figma tokens if available
 - Output: Generated .kt file
 
-**Phase 3: Device Validation** (visual-validator agent)
+**Phase 3: Paparazzi Validation** (paparazzi-validator agent)
+- Fast JVM-based screenshot testing (~5-10s per iteration)
+- SSIM comparison with 0.95 threshold (stricter due to deterministic rendering)
+- LLM Vision analysis on threshold failure
+- Continue until threshold met or max iterations
+- Output: Refined .kt file + JVM screenshots
+
+**Phase 4: Device Validation** (visual-validator agent)
 - Device-centric loop with LLM Vision primary:
   - Build → Deploy → Screenshot → LLM Compare → Refine
-- SSIM as secondary metric for logging
+- SSIM as secondary metric for logging (0.92 threshold)
 - Continue until LLM approves or max iterations
-- Output: Validated .kt file + screenshots
+- Output: Validated .kt file + device screenshots
 
-**Phase 4: Final Report**
-- Summarize results with LLM verdict
+**Phase 5: Final Report**
+- Summarize results from both validation phases
+- Include Paparazzi and Device metrics
 - Offer commit option
 
 ---
@@ -122,7 +130,8 @@ Use TodoWrite to create workflow tasks:
   {"content": "Process design input (Phase 1)", "status": "pending", "activeForm": "Processing design input"},
   {"content": "Preprocess baseline (Phase 1.5)", "status": "pending", "activeForm": "Preprocessing baseline"},
   {"content": "Generate initial Compose code (Phase 2)", "status": "pending", "activeForm": "Generating Compose code"},
-  {"content": "Device validation with LLM Vision (Phase 3)", "status": "pending", "activeForm": "Validating on device"},
+  {"content": "Paparazzi JVM validation (Phase 3)", "status": "pending", "activeForm": "Validating with Paparazzi"},
+  {"content": "Device validation with LLM Vision (Phase 4)", "status": "pending", "activeForm": "Validating on device"},
   {"content": "Generate final report", "status": "pending", "activeForm": "Generating report"}
 ]
 ```
@@ -297,20 +306,118 @@ fi
 
 **Step 4: Update todo**
 
-Mark "Generate initial Compose code" as completed, start "Device validation loop".
+Mark "Generate initial Compose code (Phase 2)" as completed, start "Paparazzi JVM validation (Phase 3)".
 
-### Phase 3: Device Validation (visual-validator agent)
+### Phase 3: Paparazzi Validation (paparazzi-validator agent)
+
+Fast JVM-based screenshot testing that iterates quickly without device deployment. Uses the plugin's test harness with Paparazzi for deterministic rendering.
+
+**Step 1: Check if Paparazzi validation enabled**
+
+```bash
+# Read config
+paparazzi_enabled=$(grep -A 5 "paparazzi:" .claude/compose-designer.yaml | grep "enabled:" | awk '{print $2}')
+if [ "$paparazzi_enabled" = "false" ]; then
+  echo "⚠️  Paparazzi validation disabled in config, skipping to device validation"
+  # Skip to Phase 4
+fi
+```
+
+**Step 2: Invoke paparazzi-validator agent**
+
+Use Task tool:
+
+```
+Task tool:
+  subagent_type: "compose-designer:paparazzi-validator"
+  model: {config.model.paparazzi_validator || config.model.default}
+  description: "Validate UI with Paparazzi JVM"
+  prompt: "Validate Compose code in {output_file_path} against baseline {preprocessed_baseline_path} using Paparazzi.
+
+  Inputs:
+  - kotlin_file_path: {output_file_path}
+  - baseline_image_path: {preprocessed_baseline_path}
+  - component_name: {name}
+  - preview_function: {name}Preview
+  - temp_dir: {temp_dir}
+  - config:
+    - validation.paparazzi.threshold: {config.validation.paparazzi.threshold}
+    - validation.paparazzi.max_iterations: {config.validation.paparazzi.max_iterations}
+    - validation.paparazzi.device_config: {config.validation.paparazzi.device_config}
+    - validation.ssim_sanity_threshold: {config.validation.ssim_sanity_threshold}
+
+  The agent will:
+  1. Copy component to test harness with package transformation
+  2. Generate Paparazzi test file
+  3. Run ./gradlew testDebugUnitTest
+  4. Compare snapshot with baseline using SSIM
+  5. If below threshold: analyze diff with LLM Vision, refine code, repeat
+  6. Return when threshold met or max iterations reached
+
+  Save snapshots and diffs to: {temp_dir}/paparazzi/"
+```
+
+**Step 3: Review Paparazzi validation results**
+
+Agent will return JSON:
+```json
+{
+  "status": "SUCCESS|THRESHOLD_NOT_MET|MAX_ITERATIONS",
+  "final_ssim": 0.96,
+  "iterations": 3,
+  "snapshots": ["paparazzi/snapshot-1.png", ...],
+  "diff_images": ["paparazzi/diff-1.png", ...],
+  "summary": "Paparazzi validation passed with 96% similarity after 3 iterations."
+}
+```
+
+**Step 4: Handle Paparazzi outcome**
+
+If status is SUCCESS:
+- Continue to Phase 4 (Device Validation)
+- Pass refined code from Paparazzi phase
+
+If status is THRESHOLD_NOT_MET or MAX_ITERATIONS:
+```
+Ask user: "Paparazzi validation incomplete. SSIM: {final_ssim:.2%} (target: {threshold:.2%})
+Iterations: {iterations}/{max_iterations}
+
+Options:
+1. Continue to device validation anyway (may catch issues there)
+2. Manual refinement (I'll help improve the code)
+3. Adjust threshold and retry
+4. Abort workflow
+
+What would you like to do? [1/2/3/4]: "
+```
+
+**Step 5: Update todo**
+
+Mark "Paparazzi JVM validation (Phase 3)" as completed, start "Device validation with LLM Vision (Phase 4)".
+
+### Phase 4: Device Validation (visual-validator agent)
 
 The visual-validator agent performs device-centric validation: deploy to device, capture screenshots, compare with SSIM + LLM vision, and iterate until threshold is reached.
 
-**Step 1: Check device availability**
+**Step 1: Check if device validation enabled**
+
+```bash
+# Read config
+device_enabled=$(grep -A 5 "device:" .claude/compose-designer.yaml | grep "enabled:" | awk '{print $2}')
+if [ "$device_enabled" = "false" ]; then
+  echo "⚠️  Device validation disabled in config, skipping to final report"
+  # Skip to Phase 5
+fi
+```
+
+**Step 2: Check device availability**
 
 ```bash
 # Check if mobile-mcp tools available
 claude --help | grep -q "mobile_list_available_devices" || {
   echo "⚠️  Mobile-mcp plugin not found"
   echo "Install: https://github.com/mobile-dev-inc/mobile-mcp"
-  read -p "Skip validation phase? [y/N]: " skip
+  read -p "Skip device validation phase? [y/N]: " skip
   [ "$skip" = "y" ] && return 0
 }
 
@@ -322,13 +429,13 @@ if [ -z "$devices" ]; then
   echo "Connect a device:"
   echo "  • Physical: Enable USB debugging"
   echo "  • Emulator: Launch from Android Studio"
-  read -p "Skip validation phase? [y/N]: " skip
+  read -p "Skip device validation phase? [y/N]: " skip
   [ "$skip" = "y" ] && return 0
   exit 1
 fi
 ```
 
-**Step 2: Invoke visual-validator agent**
+**Step 3: Invoke visual-validator agent**
 
 Use Task tool:
 
@@ -347,10 +454,9 @@ Task tool:
   - package_name: {config.output.package_base}
   - temp_dir: {temp_dir}
   - config:
-    - validation.visual_similarity_threshold: {config.validation.visual_similarity_threshold}
-    - validation.max_ralph_iterations: {config.validation.max_ralph_iterations}
+    - validation.device.threshold: {config.validation.device.threshold}
+    - validation.device.max_iterations: {config.validation.device.max_iterations}
     - validation.ssim_sanity_threshold: {config.validation.ssim_sanity_threshold}
-    - validation.primary_method: {config.validation.primary_method}
 
   Use LLM Vision as primary validation. SSIM for logging only.
 
@@ -361,10 +467,10 @@ Task tool:
   4. If LLM detects differences: analyze issues, apply fixes, repeat
   5. Return when LLM approves or max iterations reached
 
-  Save screenshots and diffs to: {temp_dir}/"
+  Save screenshots and diffs to: {temp_dir}/device/"
 ```
 
-**Step 3: Review validation results**
+**Step 4: Review validation results**
 
 Agent will return JSON:
 ```json
@@ -374,14 +480,14 @@ Agent will return JSON:
   "llm_confidence": "HIGH|MEDIUM|LOW",
   "final_ssim": 0.93,
   "iterations": 4,
-  "screenshots": ["iteration-1.png", ...],
-  "diff_images": ["diff-1.png", ...],
+  "screenshots": ["device/iteration-1.png", ...],
+  "diff_images": ["device/diff-1.png", ...],
   "sanity_warning": false,
   "summary": "LLM approved with high confidence. Minor spacing differences noted but within acceptable bounds."
 }
 ```
 
-**Step 4: Handle validation outcome**
+**Step 5: Handle validation outcome**
 
 If status is STUCK or MAX_ITERATIONS:
 ```
@@ -397,11 +503,11 @@ Options:
 What would you like to do? [1/2/3/4]: "
 ```
 
-**Step 5: Update todo**
+**Step 6: Update todo**
 
-Mark "Device validation with LLM Vision (Phase 3)" as completed, start "Generate final report".
+Mark "Device validation with LLM Vision (Phase 4)" as completed, start "Generate final report".
 
-### Phase 4: Final Report and Commit
+### Phase 5: Final Report and Commit
 
 **Step 1: Generate comprehensive report**
 
@@ -423,15 +529,22 @@ Compile results from all phases:
 ✓ Lines of code: {loc}
 ✓ Figma tokens: {used_figma_tokens ? "✓ Extracted" : "N/A (screenshot input)"}
 
-📱 Phase 3: Device Validation
+⚡ Phase 3: Paparazzi Validation (JVM)
+✓ Status: {paparazzi_status}
+✓ Final SSIM: {paparazzi_ssim:.2%} (threshold: {config.validation.paparazzi.threshold:.2%})
+✓ Iterations: {paparazzi_iterations}/{config.validation.paparazzi.max_iterations}
+✓ Time: ~{paparazzi_time}s ({paparazzi_iterations} × ~5-10s per iteration)
+{if paparazzi_status != "SUCCESS": "⚠️  {paparazzi_status}: {paparazzi_summary}"}
+
+📱 Phase 4: Device Validation
 ✓ Method: LLM Vision primary (SSIM secondary)
 ✓ LLM Verdict: {llm_verdict} (Confidence: {llm_confidence})
-✓ Iterations: {iteration_count}/{config.validation.max_ralph_iterations}
-✓ Final SSIM: {final_ssim:.2%} (threshold: {config.validation.visual_similarity_threshold:.2%})
-✓ Status: {status}
+✓ Iterations: {device_iterations}/{config.validation.device.max_iterations}
+✓ Final SSIM: {device_ssim:.2%} (threshold: {config.validation.device.threshold:.2%})
+✓ Status: {device_status}
 ✓ Device: {device_name}
 {if sanity_warning: "⚠️  LLM passed but SSIM below sanity threshold - manual review recommended"}
-{if status != "SUCCESS": "⚠️  {status}: {summary}"}
+{if device_status != "SUCCESS": "⚠️  {device_status}: {device_summary}"}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -440,8 +553,10 @@ Compile results from all phases:
   • Baseline: {baseline_path}
   • Preprocessed: {preprocessed_baseline_path}
   • Artifacts: {temp_dir}/
-    - iteration-*.png (device screenshots)
-    - diff-*.png (difference visualizations)
+    - paparazzi/snapshot-*.png (JVM screenshots)
+    - paparazzi/diff-*.png (Paparazzi diffs)
+    - device/iteration-*.png (device screenshots)
+    - device/diff-*.png (device diffs)
 
 📋 Next Steps:
   [ ] Review generated code
@@ -491,12 +606,14 @@ git commit -m "feat: add {ComponentName} generated from design
 
 Generated using compose-designer plugin:
 - Input: {input_source}
+- Paparazzi SSIM: {paparazzi_ssim:.1%} ({paparazzi_iterations} iterations)
+- Device SSIM: {device_ssim:.1%} ({device_iterations} iterations)
 - LLM Verdict: {llm_verdict} (Confidence: {llm_confidence})
-- SSIM: {final_ssim:.1%}
 - Device tested: ✓ ({device_name})
 
-Code generation: Complete
-Device validation: {iteration_count} iterations, LLM Vision primary"
+Phase 2: Code generation
+Phase 3: Paparazzi validation (JVM)
+Phase 4: Device validation (LLM Vision primary)"
 ```
 
 **Step 4: Mark all todos complete**
@@ -631,13 +748,32 @@ Would you like to:
 Choose [1/2/3]:
 ```
 
-**Validation threshold not reached:**
+**Paparazzi validation threshold not reached:**
 ```
-⚠️  Visual validation incomplete
+⚠️  Paparazzi (JVM) validation incomplete
+
+Final SSIM: {score:.1%} (threshold: {threshold:.1%})
+Iterations: {iterations}/{max_iterations} (limit reached)
+
+Differences:
+{list major visual differences from LLM analysis}
+
+Options:
+1. Continue to device validation (may catch remaining issues)
+2. Manual refinement (I'll help improve code)
+3. Lower threshold to {score:.1%} and retry
+4. Abort workflow
+
+What would you like to do? [1/2/3/4]:
+```
+
+**Device validation threshold not reached:**
+```
+⚠️  Device validation incomplete
 
 LLM Verdict: {llm_verdict} (Confidence: {llm_confidence})
 Final SSIM: {score:.1%} (threshold: {threshold:.1%})
-Iterations: {max_iterations}/{max_iterations} (limit reached)
+Iterations: {iterations}/{max_iterations} (limit reached)
 
 Differences:
 {list major visual differences from LLM analysis}

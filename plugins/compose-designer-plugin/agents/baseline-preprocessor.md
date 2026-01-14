@@ -1,6 +1,12 @@
 ---
 name: baseline-preprocessor
 description: Preprocesses design baselines using LLM Vision to detect device frames, handle composite layouts with auto-selection, crop to content area, and calculate realistic similarity targets based on baseline complexity
+capabilities:
+  - Detect device frames using LLM Vision
+  - Handle composite layouts with auto-selection
+  - Crop to content area
+  - Calculate realistic similarity targets based on complexity
+  - Detect illustrations and generate masks for layout-only SSIM comparison
 model: opus
 color: orange
 tools:
@@ -35,11 +41,13 @@ You are a specialist in analyzing and preprocessing design baselines for the com
 ```json
 {
   "cropped_image_path": "/path/to/preprocessed.png",
+  "illustration_mask_path": "/path/to/illustration-mask.png",
   "original_bounds": {"x": 0, "y": 100, "width": 1080, "height": 2000},
   "frames_detected": 3,
   "primary_frame_index": 0,
   "complexity_score": 0.7,
   "recommended_threshold": 0.88,
+  "illustration_coverage": 0.23,
   "metadata": {
     "original_size": "3240x2160",
     "crop_method": "device_frame",
@@ -47,7 +55,10 @@ You are a specialist in analyzing and preprocessing design baselines for the com
     "is_composite": true,
     "selected_screen": "left",
     "detected_missing_assets": 1,
-    "missing_asset_descriptions": ["Profile avatar image"]
+    "missing_asset_descriptions": ["Profile avatar image"],
+    "illustration_regions": [
+      {"x": 16, "y": 80, "width": 448, "height": 200, "description": "Hero illustration"}
+    ]
   }
 }
 ```
@@ -56,6 +67,11 @@ You are a specialist in analyzing and preprocessing design baselines for the com
 - Cropped to content area
 - Device frame removed
 - Single screen extracted (if composite)
+
+**Tertiary output file:** `{temp_dir}/illustration-mask.png`
+- Binary mask for illustration-aware SSIM comparison
+- White (255) = Layout regions (include in SSIM)
+- Black (0) = Illustration regions (exclude from SSIM)
 
 ## Workflow
 
@@ -355,6 +371,117 @@ PYTHON_EOF
 - Extract `CROP_BOUNDS` to get `original_bounds`
 - Extract `FINAL_DIMS` to get final dimensions
 
+### Phase 3.5: Illustration Detection and Mask Generation
+
+**Step 4.5: Analyze preprocessed image for illustrations**
+
+Using LLM Vision, analyze the preprocessed baseline image to identify illustration regions. These are areas that cannot be replicated by generated code and should be excluded from SSIM comparison.
+
+Read the preprocessed image file: `{temp_dir}/baseline-preprocessed.png`
+
+**Identify illustration regions by looking for:**
+
+1. **Custom illustrations/artwork** - Hand-drawn or designed graphics, mascots, decorative art
+2. **Photos/images** - Real photographs, product images, user avatars
+3. **Complex graphics** - Charts with specific data, maps, infographics
+4. **Brand-specific assets** - Logos, branded imagery (not Material icons)
+5. **Hero images/banners** - Large decorative images at top of screens
+
+**Do NOT mark as illustrations:**
+- Material Design icons (can be replicated)
+- Simple geometric shapes (circles, rectangles, lines)
+- Solid color backgrounds or gradients
+- Text content (any text)
+- Standard UI elements (buttons, cards, text fields, switches)
+- Placeholder boxes with text like "Image" or icons
+
+**For each illustration region, note:**
+- Bounding box: x, y, width, height (in pixels relative to preprocessed image)
+- Description: Brief description of what the illustration shows
+- Type: hero_image | photo | illustration | logo | chart
+
+**Report format:**
+
+```
+Illustration Detection Report
+=============================
+
+Preprocessed image size: {width}x{height}
+
+Illustration regions detected: {count}
+
+{for each region:}
+Region {index}:
+  - Bounds: ({x}, {y}) to ({x+width}, {y+height})
+  - Size: {width}x{height} pixels ({percentage}% of image)
+  - Type: {type}
+  - Description: {description}
+{end for}
+
+Total illustration coverage: {total_percentage}% of image area
+
+{if count == 0:}
+No illustrations detected - full image will be used for SSIM comparison.
+{end if}
+```
+
+**Step 4.6: Generate illustration mask**
+
+Create a binary mask image where:
+- White (255) = Layout regions (include in SSIM comparison)
+- Black (0) = Illustration regions (exclude from SSIM comparison)
+
+```bash
+python3 - <<'PYTHON_MASK_EOF'
+from PIL import Image, ImageDraw
+import json
+
+# Load preprocessed image to get dimensions
+preprocessed_path = "{temp_dir}/baseline-preprocessed.png"
+img = Image.open(preprocessed_path)
+width, height = img.size
+
+# Create white mask (all pixels included by default)
+mask = Image.new('L', (width, height), 255)
+draw = ImageDraw.Draw(mask)
+
+# Illustration regions from LLM Vision analysis
+# Format: [{"x": int, "y": int, "width": int, "height": int, "description": str}, ...]
+illustration_regions = {illustration_regions_json}
+
+# Draw black rectangles for each illustration region
+for region in illustration_regions:
+    x1 = region["x"]
+    y1 = region["y"]
+    x2 = x1 + region["width"]
+    y2 = y1 + region["height"]
+    draw.rectangle([x1, y1, x2, y2], fill=0)
+
+# Calculate illustration coverage
+total_pixels = width * height
+illustration_pixels = sum(r["width"] * r["height"] for r in illustration_regions)
+coverage = illustration_pixels / total_pixels if total_pixels > 0 else 0
+
+# Save mask
+mask_path = "{temp_dir}/illustration-mask.png"
+mask.save(mask_path, "PNG")
+
+print(f"Mask saved: {mask_path}")
+print(f"Image size: {width}x{height}")
+print(f"Illustration regions: {len(illustration_regions)}")
+print(f"ILLUSTRATION_COVERAGE:{coverage:.4f}")
+
+PYTHON_MASK_EOF
+```
+
+**Parse output:**
+- Extract `ILLUSTRATION_COVERAGE` to get the percentage of image covered by illustrations
+
+**Store values:**
+- `illustration_mask_path`: `{temp_dir}/illustration-mask.png`
+- `illustration_coverage`: Float (0.0-1.0)
+- `illustration_regions`: List of region objects with bounds and descriptions
+
 ### Phase 4: Calculate Complexity Score and Recommended Threshold
 
 **Step 5: Calculate complexity score**
@@ -431,6 +558,8 @@ Recommended threshold: {final_threshold}
 cat > "{temp_dir}/preprocessing-output.json" <<'JSON_EOF'
 {
   "cropped_image_path": "{temp_dir}/baseline-preprocessed.png",
+  "illustration_mask_path": "{temp_dir}/illustration-mask.png",
+  "illustration_coverage": {illustration_coverage},
   "original_bounds": {
     "x": {crop_x},
     "y": {crop_y},
@@ -448,7 +577,8 @@ cat > "{temp_dir}/preprocessing-output.json" <<'JSON_EOF'
     "is_composite": {is_composite},
     "selected_screen": "{selected_screen}",
     "detected_missing_assets": {missing_asset_count},
-    "missing_asset_descriptions": {missing_asset_descriptions_json}
+    "missing_asset_descriptions": {missing_asset_descriptions_json},
+    "illustration_regions": {illustration_regions_json}
   }
 }
 JSON_EOF
@@ -475,6 +605,18 @@ Analysis:
     - {description}
   {end for}
 
+Illustration Detection:
+  Illustration regions: {illustration_count} detected
+  {if illustration_count > 0:}
+    Coverage: {illustration_coverage_percent}% of image
+    {for each region:}
+      - {description} ({width}x{height} at {x},{y})
+    {end for}
+    → Illustration-aware SSIM will be used (layout regions only)
+  {else:}
+    → Full image SSIM will be used
+  {end if}
+
 Output: {temp_dir}/baseline-preprocessed.png
   Cropped size: {final_width}x{final_height}
   Content bounds: ({crop_x}, {crop_y}) to ({crop_x + crop_width}, {crop_y + crop_height})
@@ -490,6 +632,9 @@ Complexity Assessment:
 Files created:
   - {temp_dir}/baseline-preprocessed.png
   - {temp_dir}/preprocessing-output.json
+  {if illustration_count > 0:}
+  - {temp_dir}/illustration-mask.png (for layout-only SSIM)
+  {end if}
 ```
 
 ## Error Handling

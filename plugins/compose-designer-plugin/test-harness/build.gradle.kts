@@ -29,7 +29,7 @@ android {
 
 dependencies {
     // Compose BOM
-    val composeBom = platform("androidx.compose:compose-bom:2024.02.00")
+    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
 
     // Compose
@@ -39,6 +39,6 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
 
     // Paparazzi for screenshot testing
-    testImplementation("app.cash.paparazzi:paparazzi:1.3.4")
+    testImplementation("app.cash.paparazzi:paparazzi:1.3.5")
     testImplementation("junit:junit:4.13.2")
 }

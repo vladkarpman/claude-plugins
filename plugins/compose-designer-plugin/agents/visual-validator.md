@@ -40,15 +40,18 @@ Validates generated Compose code against design baseline through iterative devic
 - kotlin_file_path: Path to generated .kt file to validate
 - baseline_image_path: Path to original design baseline PNG
 - preprocessed_baseline_path: (optional) Path to already preprocessed baseline
+- illustration_mask_path: (optional) Path to illustration mask PNG from baseline-preprocessor
+- illustration_coverage: (optional) Float 0.0-1.0 indicating percentage of image covered by illustrations
 - component_name: Name of component (used for testTag lookup)
 - package_name: Android app package name
-- temp_dir: Directory for artifacts (screenshots, diffs, hierarchy)
+- temp_dir: Directory for artifacts (screenshots go to {temp_dir}/device/)
 - config: Configuration object containing:
-  - validation.visual_similarity_threshold: Base threshold (default: 0.92)
-  - validation.max_ralph_iterations: Loop limit (default: 8)
-  - validation.ssim_sanity_threshold: Warning threshold (default: 0.70)
-  - validation.primary_method: Should be "llm_vision" (default)
+  - validation.device.threshold: SSIM threshold for logging (default: 0.92)
+  - validation.device.max_iterations: Loop limit (default: 5)
+  - validation.ssim_sanity_threshold: Warning threshold (default: 0.40)
 ```
+
+**Note on illustration masking:** When `illustration_mask_path` is provided, SSIM logging uses only layout regions. This provides more meaningful SSIM values when placeholders are used for illustrations. Both `layout_ssim` and `full_ssim` are reported for complete picture.
 
 ## Output Contract
 
@@ -60,14 +63,27 @@ Validates generated Compose code against design baseline through iterative devic
   "llm_verdict": "PASS | ITERATE | STUCK",
   "llm_confidence": "HIGH | MEDIUM | LOW",
   "iterations": 3,
-  "ssim_history": [0.42, 0.67, 0.81],
-  "final_ssim": 0.81,
+  "ssim_history": [
+    {"layout_ssim": 0.42, "full_ssim": 0.38},
+    {"layout_ssim": 0.67, "full_ssim": 0.59},
+    {"layout_ssim": 0.81, "full_ssim": 0.72}
+  ],
+  "final_layout_ssim": 0.81,
+  "final_full_ssim": 0.72,
+  "illustration_coverage": 0.23,
+  "has_illustration_mask": true,
   "summary": "LLM assessment summary of final state",
   "issues_fixed": ["Adjusted button padding from 8dp to 16dp", "Changed text color to match design"],
-  "screenshots": ["iteration-1.png", "iteration-2.png", "iteration-3.png"],
+  "screenshots": ["device/iteration-1.png", "device/iteration-2.png", "device/iteration-3.png"],
   "sanity_warning": false
 }
 ```
+
+**Score explanation:**
+- `final_layout_ssim`: SSIM on layout regions only (excludes illustrations). **Used for sanity threshold comparison.**
+- `final_full_ssim`: SSIM on entire image. **Reported for awareness only.**
+- `illustration_coverage`: Percentage of image covered by illustrations.
+- `has_illustration_mask`: Whether illustration mask was applied.
 
 ## Workflow
 
@@ -88,8 +104,8 @@ if [ ! -f "{baseline_image_path}" ]; then
     exit 1
 fi
 
-# Create temp directory
-mkdir -p "{temp_dir}"
+# Create temp directory with device subdirectory
+mkdir -p "{temp_dir}/device"
 ```
 
 **Step 2: Preprocess baseline (if not already done)**
@@ -106,7 +122,7 @@ Task tool invocation:
       Inputs:
       - baseline_path: {baseline_image_path}
       - temp_dir: {temp_dir}
-      - config_threshold: {config.validation.visual_similarity_threshold}
+      - config_threshold: {config.validation.device.threshold}
 
       Analyze the image for device frames, composite layouts, and missing assets.
       Crop to content area and calculate recommended threshold.
@@ -135,13 +151,14 @@ preprocessed_baseline="{preprocessed_baseline_path}"
 
 ```
 iteration = 0
-max_iterations = {config.validation.max_ralph_iterations or 8}
-ssim_history = []
+max_iterations = {config.validation.device.max_iterations or 5}
+ssim_history = []  # List of {layout_ssim, full_ssim} objects
 issues_fixed = []
 screenshots = []
 llm_verdict = "ITERATE"
 llm_confidence = "MEDIUM"
-sanity_threshold = {config.validation.ssim_sanity_threshold or 0.70}
+sanity_threshold = {config.validation.ssim_sanity_threshold or 0.40}
+has_illustration_mask = illustration_mask_path exists and file exists
 ```
 
 ### Phase 1: Validation Loop
@@ -215,13 +232,13 @@ Wait 3 seconds for app to render fully.
 ```
 mcp__mobile-mcp__mobile_save_screenshot(
   device: {selected_device_id},
-  saveTo: "{temp_dir}/iteration-{iteration}.png"
+  saveTo: "{temp_dir}/device/iteration-{iteration}.png"
 )
 ```
 
 Add to screenshots list:
 ```
-screenshots.append("iteration-{iteration}.png")
+screenshots.append("device/iteration-{iteration}.png")
 ```
 
 ---
@@ -239,14 +256,14 @@ hierarchy = mcp__mobile-mcp__mobile_list_elements_on_screen(
 **Save hierarchy to file:**
 
 ```bash
-echo '{hierarchy_json}' > "{temp_dir}/hierarchy-{iteration}.json"
+echo '{hierarchy_json}' > "{temp_dir}/device/hierarchy-{iteration}.json"
 ```
 
 **Extract component bounds using testTag:**
 
 ```bash
 bounds_json=$(python3 "${CLAUDE_PLUGIN_ROOT}/utils/extract-component-bounds.py" \
-  "{temp_dir}/hierarchy-{iteration}.json" \
+  "{temp_dir}/device/hierarchy-{iteration}.json" \
   "{component_name}")
 
 echo "Bounds extraction result: $bounds_json"
@@ -264,15 +281,15 @@ if [ "$found" = "True" ]; then
     height=$(echo "$bounds_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['height'])")
 
     python3 "${CLAUDE_PLUGIN_ROOT}/utils/crop-image.py" \
-      "{temp_dir}/iteration-{iteration}.png" \
-      "{temp_dir}/cropped-{iteration}.png" \
+      "{temp_dir}/device/iteration-{iteration}.png" \
+      "{temp_dir}/device/cropped-{iteration}.png" \
       "$x" "$y" "$width" "$height"
 
-    cropped_screenshot="{temp_dir}/cropped-{iteration}.png"
+    cropped_screenshot="{temp_dir}/device/cropped-{iteration}.png"
 else
     echo "Warning: Component bounds not found for testTag '{component_name}'"
     echo "Using full screenshot for comparison"
-    cropped_screenshot="{temp_dir}/iteration-{iteration}.png"
+    cropped_screenshot="{temp_dir}/device/iteration-{iteration}.png"
 fi
 ```
 
@@ -366,24 +383,47 @@ llm_issues = {issues}
 Calculate SSIM for monitoring and logging purposes. **This does NOT affect iteration decisions.**
 
 ```bash
-ssim=$(python3 "${CLAUDE_PLUGIN_ROOT}/utils/image-similarity.py" \
-  "{preprocessed_baseline}" \
-  "{cropped_screenshot}" \
-  --output "{temp_dir}/diff-{iteration}.png")
+# Build SSIM command with optional mask
+ssim_cmd="python3 \"${CLAUDE_PLUGIN_ROOT}/utils/image-similarity.py\" \
+  \"{preprocessed_baseline}\" \
+  \"{cropped_screenshot}\" \
+  --output \"{temp_dir}/device/diff-{iteration}.png\" \
+  --json"
 
-echo "Iteration {iteration}: SSIM = $ssim, LLM verdict = {llm_verdict}"
+# Add mask if available
+if [ -n "{illustration_mask_path}" ] && [ -f "{illustration_mask_path}" ]; then
+    ssim_cmd="$ssim_cmd --mask \"{illustration_mask_path}\""
+fi
+
+# Execute and parse JSON result
+ssim_result=$(eval $ssim_cmd)
+
+# Parse JSON output
+layout_ssim=$(echo "$ssim_result" | python3 -c "import sys,json; print(json.load(sys.stdin)['layout_ssim'])")
+full_ssim=$(echo "$ssim_result" | python3 -c "import sys,json; print(json.load(sys.stdin)['full_ssim'])")
+has_mask=$(echo "$ssim_result" | python3 -c "import sys,json; print(json.load(sys.stdin)['has_mask'])")
+
+# Log with clarity
+if [ "$has_mask" = "True" ]; then
+    echo "Iteration {iteration}: Layout SSIM = $layout_ssim | Full SSIM = $full_ssim, LLM verdict = {llm_verdict}"
+else
+    echo "Iteration {iteration}: SSIM = $layout_ssim, LLM verdict = {llm_verdict}"
+fi
 ```
 
 Append to history:
 ```
-ssim_history.append({ssim})
+ssim_history.append({"layout_ssim": $layout_ssim, "full_ssim": $full_ssim})
 ```
 
 Log the iteration:
 ```
 Iteration {iteration} Summary:
   - LLM Verdict: {llm_verdict} ({llm_confidence} confidence)
-  - SSIM Score: {ssim} (for reference only)
+  - Layout SSIM: {layout_ssim} (for reference only)
+  {if has_illustration_mask:}
+  - Full SSIM: {full_ssim} (includes illustration regions)
+  {end if}
   - Summary: {llm_summary}
   - Issues found: {len(llm_issues)}
 ```
@@ -394,11 +434,15 @@ Iteration {iteration} Summary:
 
 **If `llm_verdict == "PASS"`:**
 
-Check SSIM sanity:
+Check SSIM sanity (using layout_ssim which excludes illustrations):
 ```
-if ssim < sanity_threshold:
+if layout_ssim < sanity_threshold:
     sanity_warning = true
-    log("Warning: LLM approved but SSIM ({ssim}) is below sanity threshold ({sanity_threshold})")
+    if has_illustration_mask:
+        log("Warning: LLM approved but Layout SSIM ({layout_ssim}) is below sanity threshold ({sanity_threshold})")
+        log("Full SSIM is {full_ssim} (includes illustration regions)")
+    else:
+        log("Warning: LLM approved but SSIM ({layout_ssim}) is below sanity threshold ({sanity_threshold})")
     log("This may indicate a visual mismatch the LLM overlooked")
 else:
     sanity_warning = false
@@ -486,7 +530,10 @@ else:
   "llm_confidence": "{llm_confidence}",
   "iterations": {iteration},
   "ssim_history": [{ssim_history}],
-  "final_ssim": {ssim_history[-1]},
+  "final_layout_ssim": {ssim_history[-1]['layout_ssim']},
+  "final_full_ssim": {ssim_history[-1]['full_ssim']},
+  "illustration_coverage": {illustration_coverage},
+  "has_illustration_mask": {has_illustration_mask},
   "summary": "{llm_summary}",
   "issues_fixed": [{issues_fixed}],
   "screenshots": [{screenshots}],
@@ -504,16 +551,29 @@ Status: {status}
 LLM Verdict: {llm_verdict} ({llm_confidence} confidence)
 Iterations: {iteration}
 
+{if has_illustration_mask:}
+Illustration-Aware Validation: ENABLED
+  Coverage: {illustration_coverage * 100:.1f}% of image area
+  Method: Layout-only SSIM comparison for sanity checks
+{end if}
+
 SSIM History (for reference):
-{for i, ssim in enumerate(ssim_history):}
-  Iteration {i+1}: {ssim:.4f}
+{for i, entry in enumerate(ssim_history):}
+  {if has_illustration_mask:}
+  Iteration {i+1}: Layout {entry['layout_ssim']:.4f} | Full {entry['full_ssim']:.4f}
+  {else:}
+  Iteration {i+1}: {entry['layout_ssim']:.4f}
+  {end if}
 {end for}
 
 {if status == "SUCCESS":}
 Implementation matches design intent.
 {if sanity_warning:}
-Warning: SSIM ({final_ssim:.4f}) is below sanity threshold ({sanity_threshold}).
+Warning: Layout SSIM ({final_layout_ssim:.4f}) is below sanity threshold ({sanity_threshold}).
          Consider manual review to verify visual accuracy.
+{if has_illustration_mask:}
+         (Full SSIM is {final_full_ssim:.4f} - lower due to illustration placeholders)
+{end if}
 {end if}
 {end if}
 
@@ -525,6 +585,9 @@ Recommendation: Review the design baseline and generated code manually.
 {if status == "MAX_ITERATIONS":}
 Could not achieve LLM approval within {max_iterations} iterations.
 Final state may be acceptable - manual review recommended.
+{if has_illustration_mask:}
+Note: {illustration_coverage * 100:.1f}% of image is illustrations (excluded from SSIM comparison).
+{end if}
 {end if}
 
 Issues Fixed:
@@ -533,10 +596,13 @@ Issues Fixed:
 {end for}
 
 Artifacts:
-  - Screenshots: {temp_dir}/iteration-*.png
-  - Diff images: {temp_dir}/diff-*.png
-  - View hierarchies: {temp_dir}/hierarchy-*.json
-  - Cropped screenshots: {temp_dir}/cropped-*.png
+  - Screenshots: {temp_dir}/device/iteration-*.png
+  - Diff images: {temp_dir}/device/diff-*.png
+  - View hierarchies: {temp_dir}/device/hierarchy-*.json
+  - Cropped screenshots: {temp_dir}/device/cropped-*.png
+  {if has_illustration_mask:}
+  - Illustration mask: {illustration_mask_path}
+  {end if}
 ```
 
 ## Error Handling
@@ -607,17 +673,27 @@ Recommendation:
 Warning: LLM approved but SSIM is low
 
 LLM verdict: PASS ({llm_confidence} confidence)
-SSIM score: {final_ssim:.4f}
+Layout SSIM: {final_layout_ssim:.4f}
+{if has_illustration_mask:}
+Full SSIM: {final_full_ssim:.4f} (includes illustration regions)
+Illustration coverage: {illustration_coverage * 100:.1f}%
+{end if}
 Sanity threshold: {sanity_threshold}
 
 This discrepancy may indicate:
   1. LLM overlooked significant differences
   2. Baseline preprocessing artifacts
   3. Device rendering differences
+  {if has_illustration_mask:}
+  4. Illustration placeholders differ significantly from originals (expected)
+  {end if}
 
 Recommendation:
   - Review screenshots manually: {temp_dir}/
   - Compare diff images for visual differences
+  {if has_illustration_mask:}
+  - Review illustration-mask.png to see excluded regions
+  {end if}
   - Consider adjusting sanity_threshold if this is expected
 ```
 

@@ -125,13 +125,22 @@ preview:
   device_spec: "spec:width=411dp,height=891dp"  # Pixel 4 default
   font_scale: 1.0
 
-# Validation thresholds
+# Validation settings
 validation:
-  visual_similarity_threshold: 0.92    # SSIM sanity check threshold (from config)
-  max_ralph_iterations: 10             # Max iterations for refinement loop
-  preview_screenshot_delay: "auto"     # "auto" or milliseconds
-  primary_method: "llm_vision"         # "llm_vision" or "ssim" (legacy)
   ssim_sanity_threshold: 0.4           # Flag for review if LLM passes but SSIM below this
+
+  # Paparazzi phase (JVM-based fast iteration)
+  paparazzi:
+    enabled: true                      # Enable Paparazzi validation (Phase 3)
+    threshold: 0.95                    # SSIM threshold (stricter - deterministic JVM rendering)
+    max_iterations: 5                  # Max iterations in Paparazzi phase
+    device_config: "PIXEL_5"           # Paparazzi device configuration
+
+  # Device phase (Android device/emulator verification)
+  device:
+    enabled: true                      # Enable device validation (Phase 4) - default: true
+    threshold: 0.92                    # SSIM threshold for sanity check
+    max_iterations: 5                  # Max iterations in device phase
 
 # Batch processing
 batch:
@@ -198,7 +207,8 @@ Display summary to user:
 Key settings configured:
   • output.package_base: {package}
   • testing.test_activity_package: {test_package}
-  • validation.visual_similarity_threshold: 0.92
+  • validation.paparazzi.threshold: 0.95 (JVM iteration)
+  • validation.device.threshold: 0.92 (final verification)
   • batch.mode: sequential
 
 Next steps:

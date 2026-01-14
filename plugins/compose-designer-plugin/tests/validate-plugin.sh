@@ -189,6 +189,16 @@ main() {
             "description" "capabilities" "model" "color" "tools"
     fi
 
+    if check_file "agents/baseline-preprocessor.md" "Baseline preprocessor agent"; then
+        validate_frontmatter "agents/baseline-preprocessor.md" "Baseline preprocessor agent" \
+            "description" "capabilities" "model" "color" "tools"
+    fi
+
+    if check_file "agents/paparazzi-validator.md" "Paparazzi validator agent"; then
+        validate_frontmatter "agents/paparazzi-validator.md" "Paparazzi validator agent" \
+            "description" "capabilities" "model" "color" "tools"
+    fi
+
     # ═══════════════════════════════════════════════════
     section "4. Utility Scripts Validation"
     # ═══════════════════════════════════════════════════
@@ -216,6 +226,56 @@ main() {
             pass "Figma client utility shows help text"
         else
             fail "Figma client utility help text not found"
+        fi
+    fi
+
+    if check_file "utils/generate-paparazzi-test.py" "Paparazzi test generator"; then
+        check_executable "utils/generate-paparazzi-test.py" "Paparazzi test generator"
+
+        # Test help output
+        local paparazzi_output=$(./utils/generate-paparazzi-test.py --help 2>&1)
+        if echo "$paparazzi_output" | grep -q "Generate Paparazzi"; then
+            pass "Paparazzi test generator responds to --help"
+        else
+            fail "Paparazzi test generator --help failed"
+        fi
+
+        # Test with valid arguments (dry run to temp dir)
+        info "Testing generate-paparazzi-test.py..."
+        local test_output_dir=$(mktemp -d)
+        local gen_result=$(python3 utils/generate-paparazzi-test.py \
+            --component TestComponent \
+            --preview TestComponentPreview \
+            --output "$test_output_dir" \
+            --device-config PIXEL_5 2>&1)
+        if [ -f "$test_output_dir/TestComponentTest.kt" ]; then
+            pass "Paparazzi test generator creates test file"
+            # Verify content
+            if grep -q "class TestComponentTest" "$test_output_dir/TestComponentTest.kt"; then
+                pass "Generated test has correct class name"
+            else
+                fail "Generated test has wrong class name"
+            fi
+            if grep -q "DeviceConfig.PIXEL_5" "$test_output_dir/TestComponentTest.kt"; then
+                pass "Generated test has correct device config"
+            else
+                fail "Generated test has wrong device config"
+            fi
+        else
+            fail "Paparazzi test generator failed: $gen_result"
+        fi
+        rm -rf "$test_output_dir"
+    fi
+
+    if check_file "utils/setup-test-harness.sh" "Test harness setup utility"; then
+        check_executable "utils/setup-test-harness.sh" "Test harness setup utility"
+
+        # Test help output
+        local setup_output=$(./utils/setup-test-harness.sh --help 2>&1 || true)
+        if echo "$setup_output" | grep -qi "usage\|harness\|setup"; then
+            pass "Test harness setup utility responds to --help"
+        else
+            warn "Test harness setup utility --help output unclear"
         fi
     fi
 
@@ -357,6 +417,65 @@ main() {
         else
             warn "Skipping crop-image.py test (PIL not installed)"
         fi
+    fi
+
+    # ═══════════════════════════════════════════════════
+    section "11. Paparazzi Test Harness Validation"
+    # ═══════════════════════════════════════════════════
+
+    # Check test harness directory structure
+    if [ -d "test-harness" ]; then
+        pass "test-harness/ directory exists"
+
+        # Check Gradle files
+        if check_file "test-harness/build.gradle.kts" "Test harness build.gradle.kts"; then
+            # Verify Paparazzi plugin is declared
+            if grep -q "app.cash.paparazzi" "test-harness/build.gradle.kts"; then
+                pass "Test harness has Paparazzi plugin configured"
+            else
+                fail "Test harness missing Paparazzi plugin"
+            fi
+        fi
+
+        if check_file "test-harness/settings.gradle.kts" "Test harness settings.gradle.kts"; then
+            # Verify settings are present
+            if grep -q "rootProject.name" "test-harness/settings.gradle.kts"; then
+                pass "Test harness has project name configured"
+            else
+                warn "Test harness settings may be incomplete"
+            fi
+        fi
+
+        # Check Gradle wrapper
+        if check_file "test-harness/gradle/wrapper/gradle-wrapper.properties" "Gradle wrapper properties"; then
+            # Check Gradle version is compatible with Paparazzi
+            local gradle_version=$(grep "distributionUrl" "test-harness/gradle/wrapper/gradle-wrapper.properties" | grep -o "gradle-[0-9.]*" | head -1)
+            if [ -n "$gradle_version" ]; then
+                pass "Gradle version detected: $gradle_version"
+            else
+                warn "Could not detect Gradle version"
+            fi
+        fi
+
+        # Check source directories exist
+        if [ -d "test-harness/src/main/kotlin/generated" ]; then
+            pass "test-harness/src/main/kotlin/generated/ exists"
+        else
+            warn "test-harness/src/main/kotlin/generated/ missing (will be created at runtime)"
+        fi
+
+        if [ -d "test-harness/src/test/kotlin/generated" ]; then
+            pass "test-harness/src/test/kotlin/generated/ exists"
+        else
+            warn "test-harness/src/test/kotlin/generated/ missing (will be created at runtime)"
+        fi
+
+        # Check gradlew exists and is executable
+        if check_file "test-harness/gradlew" "Gradle wrapper"; then
+            check_executable "test-harness/gradlew" "Gradle wrapper"
+        fi
+    else
+        warn "test-harness/ directory not found (may need to run setup)"
     fi
 
     # ═══════════════════════════════════════════════════
