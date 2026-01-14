@@ -225,7 +225,7 @@ scrcpy:
 
 ```
 scripts/
-├── scrcpy-helper/
+├── scrcpy_helper/          # Underscore for Python import compatibility
 │   ├── __init__.py
 │   ├── server.py           # Unix socket server
 │   ├── client.py           # scrcpy connection management
