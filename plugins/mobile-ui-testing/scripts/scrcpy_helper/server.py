@@ -1,13 +1,16 @@
 """Unix socket server for scrcpy-helper."""
 
+from __future__ import annotations
+
 import json
-import os
 import socket
 import struct
 import sys
 import threading
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Optional
+
+from .client import ScrcpyClient
 
 DEFAULT_SOCKET_PATH = "/tmp/scrcpy-helper.sock"
 
@@ -21,9 +24,8 @@ class ScrcpyHelperServer:
         self.running = False
         self.lock = threading.Lock()
 
-        # Device state (will be managed by client module in Task 2)
-        self.connected = False
-        self.device_id: str | None = None
+        # scrcpy client
+        self.scrcpy = ScrcpyClient()
 
         # Command handlers
         self.commands: dict[str, Callable[[list[str]], str]] = {
@@ -39,32 +41,34 @@ class ScrcpyHelperServer:
 
     def _cmd_status(self, args: list[str]) -> str:
         """Return server status as JSON."""
-        status = {
-            "connected": self.connected,
-            "device": self.device_id,
-        }
-        return json.dumps(status)
+        return json.dumps(self.scrcpy.status())
 
     def _cmd_connect(self, args: list[str]) -> str:
-        """Connect to device (stub - actual implementation in Task 2)."""
+        """Connect to device via scrcpy."""
         device_id = args[0] if args else None
-        with self.lock:
-            self.device_id = device_id
-            self.connected = True
-        self._log(f"Connected to device: {device_id or 'default'}")
-        return "OK"
+        max_fps = 60
+
+        # Parse optional max_fps argument
+        if len(args) > 1:
+            try:
+                max_fps = int(args[1])
+            except ValueError:
+                pass
+
+        if self.scrcpy.connect(device_id, max_fps=max_fps):
+            return "OK"
+        else:
+            return "ERROR: connection failed"
 
     def _cmd_disconnect(self, args: list[str]) -> str:
         """Disconnect from device."""
-        with self.lock:
-            self.connected = False
-            self.device_id = None
-        self._log("Disconnected")
+        self.scrcpy.disconnect()
         return "OK"
 
     def _cmd_quit(self, args: list[str]) -> str:
         """Shutdown the server."""
         self._log("Shutdown requested")
+        self.scrcpy.disconnect()
         self.running = False
         return "OK"
 
@@ -159,6 +163,9 @@ class ScrcpyHelperServer:
     def stop(self) -> None:
         """Stop the server and cleanup."""
         self.running = False
+
+        # Disconnect scrcpy
+        self.scrcpy.disconnect()
 
         if self.server_socket:
             try:
