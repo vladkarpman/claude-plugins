@@ -7,16 +7,15 @@ allowed-tools:
   - Write
   - Bash
   - Glob
-  # device-manager-mcp (fast path - PREFERRED for performance-critical operations)
-  - mcp__device-manager__device_list
-  - mcp__device-manager__device_screen_size
-  - mcp__device-manager__device_screenshot
-  - mcp__device-manager__device_tap
-  - mcp__device-manager__device_swipe
-  - mcp__device-manager__device_type
-  - mcp__device-manager__device_press_key
-  # mobile-mcp (for features device-manager doesn't have + fallback)
+  # screen-buffer-mcp (fast screenshots only)
+  - mcp__screen-buffer__device_screenshot
+  # mobile-mcp (all device operations)
   - mcp__mobile-mcp__mobile_list_available_devices
+  - mcp__mobile-mcp__mobile_get_screen_size
+  - mcp__mobile-mcp__mobile_click_on_screen_at_coordinates
+  - mcp__mobile-mcp__mobile_swipe_on_screen
+  - mcp__mobile-mcp__mobile_type_keys
+  - mcp__mobile-mcp__mobile_press_button
   - mcp__mobile-mcp__mobile_list_apps
   - mcp__mobile-mcp__mobile_launch_app
   - mcp__mobile-mcp__mobile_terminate_app
@@ -26,12 +25,6 @@ allowed-tools:
   - mcp__mobile-mcp__mobile_open_url
   - mcp__mobile-mcp__mobile_set_orientation
   - mcp__mobile-mcp__mobile_get_orientation
-  # mobile-mcp fallback tools (use only if device-manager unavailable)
-  - mcp__mobile-mcp__mobile_get_screen_size
-  - mcp__mobile-mcp__mobile_click_on_screen_at_coordinates
-  - mcp__mobile-mcp__mobile_swipe_on_screen
-  - mcp__mobile-mcp__mobile_type_keys
-  - mcp__mobile-mcp__mobile_press_button
   - mcp__mobile-mcp__mobile_take_screenshot
   - mcp__mobile-mcp__mobile_save_screenshot
 ---
@@ -71,7 +64,7 @@ Extract from YAML:
 
 ### Step 4: Get Device
 
-**Tool:** `mcp__device-manager__device_list` (preferred) or `mcp__mobile-mcp__mobile_list_available_devices` (fallback)
+**Tool:** `mcp__mobile-mcp__mobile_list_available_devices`
 
 **If 0 devices:** Stop and show:
 ```
@@ -84,7 +77,7 @@ No device found. Connect a device and try again.
 
 ### Step 5: Get Screen Size (for percentage coordinates)
 
-**Tool:** `mcp__device-manager__device_screen_size` (preferred) or `mcp__mobile-mcp__mobile_get_screen_size` (fallback)
+**Tool:** `mcp__mobile-mcp__mobile_get_screen_size`
 
 Store: `{SCREEN_WIDTH}`, `{SCREEN_HEIGHT}`
 
@@ -176,7 +169,9 @@ For each test in `{TESTS}`:
    ```bash
    {SCREENSHOT_PATH} = "{REPORT_DIR}/screenshots/step_{STEP_COUNTER:03d}.png"
    ```
-   **Tool:** `mcp__device-manager__device_screenshot` (fast, preferred) or `mcp__mobile-mcp__mobile_save_screenshot` (fallback) with path={SCREENSHOT_PATH}
+   **Tool:** `mcp__screen-buffer__device_screenshot` (fast, ~50ms)
+
+   Note: screen-buffer returns base64 PNG. Save to {SCREENSHOT_PATH} using Write tool or use `mcp__mobile-mcp__mobile_save_screenshot` if file saving is needed directly.
 
    **Record step in report:**
    ```
@@ -278,30 +273,30 @@ For each step in `{TEARDOWN_STEPS}`:
 
 ## Action Mapping
 
-**Tool Priority:** ALWAYS try device-manager tools first (fast, ~50ms). Only fall back to mobile-mcp if device-manager fails or is unavailable.
+**Tool Architecture:**
 
-**Device-Manager Tools (preferred):**
-- `mcp__device-manager__device_tap` - Fast tap (~50ms)
-- `mcp__device-manager__device_swipe` - Fast swipe
-- `mcp__device-manager__device_type` - Fast text input
-- `mcp__device-manager__device_screenshot` - Fast screenshot (~50ms)
-- `mcp__device-manager__device_press_key` - Key events (BACK, HOME, ENTER)
-- `mcp__device-manager__device_screen_size` - Get screen dimensions
+- **screen-buffer-mcp:** Screenshots only (fast ~50ms via scrcpy buffer)
+- **mobile-mcp:** All other device operations
 
-**Mobile-MCP Tools (for features device-manager doesn't have):**
-- `mcp__mobile-mcp__mobile_list_elements_on_screen` - UI element discovery (device-manager doesn't have this)
-- `mcp__mobile-mcp__mobile_launch_app` - App lifecycle
-- `mcp__mobile-mcp__mobile_terminate_app` - App lifecycle
-- `mcp__mobile-mcp__mobile_list_available_devices` - Device discovery
+**Screen-Buffer Tools:**
+- `mcp__screen-buffer__device_screenshot` - Fast screenshot (~50ms)
+
+**Mobile-MCP Tools:**
+- `mcp__mobile-mcp__mobile_click_on_screen_at_coordinates` - Tap
+- `mcp__mobile-mcp__mobile_swipe_on_screen` - Swipe
+- `mcp__mobile-mcp__mobile_type_keys` - Text input
+- `mcp__mobile-mcp__mobile_press_button` - Key events (BACK, HOME, ENTER)
+- `mcp__mobile-mcp__mobile_list_elements_on_screen` - UI element discovery
+- `mcp__mobile-mcp__mobile_launch_app` / `mobile_terminate_app` - App lifecycle
 - `mcp__mobile-mcp__mobile_set_orientation` - Screen orientation
 
 ### Tap Actions
 
 | YAML | Tool | Parameters |
 |------|------|------------|
-| `tap: "Button"` | Find element via `mcp__mobile-mcp__mobile_list_elements_on_screen`, then `mcp__device-manager__device_tap` | x, y of element center |
-| `tap: [100, 200]` | `mcp__device-manager__device_tap` | x=100, y=200 |
-| `tap: ["50%", "80%"]` | Calculate pixels, then `mcp__device-manager__device_tap` | x=width×0.5, y=height×0.8 |
+| `tap: "Button"` | Find element via `mcp__mobile-mcp__mobile_list_elements_on_screen`, then `mcp__mobile-mcp__mobile_click_on_screen_at_coordinates` | x, y of element center |
+| `tap: [100, 200]` | `mcp__mobile-mcp__mobile_click_on_screen_at_coordinates` | x=100, y=200 |
+| `tap: ["50%", "80%"]` | Calculate pixels, then `mcp__mobile-mcp__mobile_click_on_screen_at_coordinates` | x=width×0.5, y=height×0.8 |
 
 ### Finding Elements
 
@@ -319,17 +314,17 @@ When action uses element text (e.g., `tap: "Login"`):
 |------|------|
 | `double_tap: "X"` | Find element → `mcp__mobile-mcp__mobile_double_tap_on_screen` |
 | `long_press: "X"` | Find element → `mcp__mobile-mcp__mobile_long_press_on_screen_at_coordinates` |
-| `type: "text"` | `mcp__device-manager__device_type` with text |
-| `type: {text: "X", submit: true}` | `mcp__device-manager__device_type` then `mcp__device-manager__device_press_key` key="ENTER" |
-| `swipe: up` | `mcp__device-manager__device_swipe` direction="up" |
-| `swipe: {direction: up, distance: 500}` | `mcp__device-manager__device_swipe` with distance |
-| `press: back` | `mcp__device-manager__device_press_key` key="BACK" |
-| `press: home` | `mcp__device-manager__device_press_key` key="HOME" |
-| `press: enter` | `mcp__device-manager__device_press_key` key="ENTER" |
+| `type: "text"` | `mcp__mobile-mcp__mobile_type_keys` with text |
+| `type: {text: "X", submit: true}` | `mcp__mobile-mcp__mobile_type_keys` then `mcp__mobile-mcp__mobile_press_button` button="ENTER" |
+| `swipe: up` | `mcp__mobile-mcp__mobile_swipe_on_screen` direction="up" |
+| `swipe: {direction: up, distance: 500}` | `mcp__mobile-mcp__mobile_swipe_on_screen` with distance |
+| `press: back` | `mcp__mobile-mcp__mobile_press_button` button="BACK" |
+| `press: home` | `mcp__mobile-mcp__mobile_press_button` button="HOME" |
+| `press: enter` | `mcp__mobile-mcp__mobile_press_button` button="ENTER" |
 | `wait: 2s` | Pause for 2 seconds (no tool call needed) |
 | `launch_app` | `mcp__mobile-mcp__mobile_launch_app` with config.app |
 | `terminate_app` | `mcp__mobile-mcp__mobile_terminate_app` with config.app |
-| `screenshot: "name"` | `mcp__device-manager__device_screenshot` with path |
+| `screenshot: "name"` | `mcp__screen-buffer__device_screenshot` (save base64 to path) |
 | `set_orientation: landscape` | `mcp__mobile-mcp__mobile_set_orientation` |
 | `open_url: "https://..."` | `mcp__mobile-mcp__mobile_open_url` |
 
@@ -343,7 +338,7 @@ When action uses element text (e.g., `tap: "Login"`):
 
 #### verify_screen Implementation
 
-1. **Tool:** `mcp__device-manager__device_screenshot` (fast, ~50ms) or `mcp__mobile-mcp__mobile_take_screenshot` (fallback)
+1. **Tool:** `mcp__screen-buffer__device_screenshot` (fast, ~50ms)
 
 2. **AI Analysis:** Examine the screenshot and determine if it matches the expected state description.
    - If matches: PASS
@@ -375,7 +370,7 @@ Conditionals check current state and execute branches accordingly.
    - Check condition against elements
 
    **For `if_screen`:**
-   - **Tool:** `mcp__device-manager__device_screenshot` (preferred) or `mcp__mobile-mcp__mobile_take_screenshot` (fallback)
+   - **Tool:** `mcp__screen-buffer__device_screenshot`
    - Analyze screenshot with AI vision (same logic as `verify_screen`)
    - Check if screen matches description
 
