@@ -70,65 +70,114 @@ def format_value(value: Any) -> str:
     return str(value)
 
 
-def process_conditionals(template: str, data: Dict[str, Any]) -> str:
-    """Process {{#if condition}}...{{/if}} blocks."""
-    pattern = r"\{\{#if\s+(\w+(?:\.\w+)*)\}\}(.*?)\{\{/if\}\}"
+def find_matching_block(template: str, tag_name: str, start_pos: int = 0) -> tuple:
+    """Find matching open/close block using balanced counting.
 
-    def replace_if(match):
-        condition_key = match.group(1)
-        content = match.group(2)
+    Returns (start, end, key, content) or None if not found.
+    """
+    # Find opening tag
+    open_pattern = rf"\{{\{{#{tag_name}\s+(\w+(?:\.\w+)*)\}}\}}"
+    match = re.search(open_pattern, template[start_pos:])
+    if not match:
+        return None
+
+    open_start = start_pos + match.start()
+    open_end = start_pos + match.end()
+    key = match.group(1)
+
+    # Count depth to find matching close tag
+    depth = 1
+    pos = open_end
+    open_re = rf"\{{\{{#{tag_name}\s+\w+"
+    close_re = rf"\{{\{{/{tag_name}\}}\}}"
+
+    while depth > 0 and pos < len(template):
+        next_open = re.search(open_re, template[pos:])
+        next_close = re.search(close_re, template[pos:])
+
+        if not next_close:
+            return None  # Unbalanced
+
+        close_pos = pos + next_close.start()
+        close_end_pos = pos + next_close.end()
+
+        if next_open and pos + next_open.start() < close_pos:
+            # Found nested open before close
+            depth += 1
+            pos = pos + next_open.end()
+        else:
+            # Found close
+            depth -= 1
+            if depth == 0:
+                content = template[open_end:close_pos]
+                return (open_start, close_end_pos, key, content)
+            pos = close_end_pos
+
+    return None
+
+
+def process_conditionals(template: str, data: Dict[str, Any]) -> str:
+    """Process {{#if condition}}...{{/if}} blocks using balanced matching."""
+
+    while True:
+        result = find_matching_block(template, "if")
+        if not result:
+            break
+
+        start, end, condition_key, content = result
         value = get_nested_value(data, condition_key)
+
         # Truthy check: non-empty, non-zero, non-false
         if value and value != 0 and value != "0":
-            return content
-        return ""
+            # Process nested conditionals within content
+            replacement = process_conditionals(content, data)
+        else:
+            replacement = ""
 
-    # Process nested conditionals from innermost to outermost
-    while re.search(pattern, template, re.DOTALL):
-        template = re.sub(pattern, replace_if, template, flags=re.DOTALL)
+        template = template[:start] + replacement + template[end:]
 
     return template
 
 
 def process_loops(template: str, data: Dict[str, Any]) -> str:
-    """Process {{#each items}}...{{/each}} blocks."""
-    pattern = r"\{\{#each\s+(\w+(?:\.\w+)*)\}\}(.*?)\{\{/each\}\}"
+    """Process {{#each items}}...{{/each}} blocks using balanced matching."""
 
-    def replace_each(match):
-        array_key = match.group(1)
-        item_template = match.group(2)
+    while True:
+        result = find_matching_block(template, "each")
+        if not result:
+            break
+
+        start, end, array_key, item_template = result
         items = get_nested_value(data, array_key)
 
         if not isinstance(items, list):
-            return ""
+            replacement = ""
+        else:
+            result_parts = []
+            for index, item in enumerate(items):
+                # Create context with item data and index
+                item_context = item.copy() if isinstance(item, dict) else {"value": item}
+                item_context["@index"] = index
+                item_context["@first"] = index == 0
+                item_context["@last"] = index == len(items) - 1
 
-        result = []
-        for index, item in enumerate(items):
-            # Create context with item data and index
-            item_context = item if isinstance(item, dict) else {"value": item}
-            item_context["@index"] = index
-            item_context["@first"] = index == 0
-            item_context["@last"] = index == len(items) - 1
+                # Process item template
+                item_html = item_template
 
-            # Process item template
-            item_html = item_template
+                # Process nested loops first (with item context)
+                item_html = process_loops(item_html, item_context)
 
-            # Process nested loops first
-            item_html = process_loops(item_html, item_context)
+                # Process conditionals (with item context)
+                item_html = process_conditionals(item_html, item_context)
 
-            # Process conditionals
-            item_html = process_conditionals(item_html, item_context)
+                # Replace simple placeholders
+                item_html = process_placeholders(item_html, item_context)
 
-            # Replace simple placeholders
-            item_html = process_placeholders(item_html, item_context)
+                result_parts.append(item_html)
 
-            result.append(item_html)
+            replacement = "".join(result_parts)
 
-        return "".join(result)
-
-    # Process from innermost to outermost
-    while re.search(pattern, template, re.DOTALL):
-        template = re.sub(pattern, replace_each, template, flags=re.DOTALL, count=1)
+        template = template[:start] + replacement + template[end:]
 
     return template
 
