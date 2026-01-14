@@ -78,6 +78,34 @@ No device found. Connect a device and try again.
 
 Store: `{SCREEN_WIDTH}`, `{SCREEN_HEIGHT}`
 
+### Step 5.5: Load Configuration
+
+**Tool:** `Bash` to load merged config:
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/load-config.py" --test-config "{TEST_FILE}"
+```
+
+Parse JSON output. Store:
+- `{CONFIG_MODEL}` = model (default: opus)
+- `{BUFFER_INTERVAL}` = buffer_interval_ms (default: 150)
+- `{VERIFICATION_RECENCY}` = verification_recency_ms (default: 500)
+
+### Step 5.6: Start Screenshot Buffer
+
+**Tool:** `Bash` to start buffer in background:
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/screenshot-buffer.py" \
+  --device "{DEVICE_ID}" \
+  --output "/tmp/mobile-ui-testing-buffer-$(date +%s)" \
+  --interval {BUFFER_INTERVAL} &
+echo $!
+```
+
+Store:
+- `{BUFFER_PID}` = process ID from output
+- `{BUFFER_DIR}` = the output path used
+- `{LAST_ACTION_TIMESTAMP}` = current time (initialize)
+
 ### Step 6: Execute Setup
 
 For each step in `{SETUP_STEPS}`:
@@ -100,6 +128,9 @@ For each test in `{TESTS}`:
    - Output result: `✓` or `✗ FAILED: {reason}`
    - On failure: take screenshot, list elements, stop this test
 
+**Important:** After executing any action (tap, swipe, type, press, wait, etc.), update:
+- `{LAST_ACTION_TIMESTAMP}` = current time
+
 3. Output result:
    ```
    ────────────────────────────────────────
@@ -117,6 +148,19 @@ For each step in `{TEARDOWN_STEPS}`:
 - Output: `  [teardown] {action} ✓`
 
 **Always run teardown**, even if tests failed.
+
+### Step 8.5: Stop Screenshot Buffer
+
+**Tool:** `Bash` to stop buffer:
+```bash
+kill {BUFFER_PID} 2>/dev/null || true
+```
+
+**On test failure:** Keep `{BUFFER_DIR}` for debugging, include path in failure output.
+**On test pass:** Clean up:
+```bash
+rm -rf {BUFFER_DIR}
+```
 
 ### Step 9: Show Summary
 
