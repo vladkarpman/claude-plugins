@@ -6,8 +6,7 @@
     },
     "device-manager": {
       "command": "${CLAUDE_PLUGIN_ROOT}/scripts/scrcpy_helper/.venv/bin/python",
-      "args": ["-m", "device_manager"],
-      "cwd": "${CLAUDE_PLUGIN_ROOT}/server"
+      "args": ["-m", "device_manager_mcp"]
     }
   }
 }
