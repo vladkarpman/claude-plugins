@@ -1,7 +1,7 @@
 ---
 name: run-test
 description: Execute a YAML mobile UI test file on a connected device
-argument-hint: <test-path> [--report]
+argument-hint: <test-path> [--no-report]
 allowed-tools:
   - Read
   - Write
@@ -35,7 +35,7 @@ Execute a YAML test file on a connected device.
 ### Step 1: Parse Arguments
 
 - `{TEST_PATH}` = path argument (required)
-- `{GENERATE_REPORT}` = true if `--report` flag present
+- `{SKIP_REPORT}` = true if `--no-report` flag present (reports enabled by default)
 
 ### Step 2: Locate Test File
 
@@ -89,6 +89,36 @@ Parse JSON output. Store:
 - `{CONFIG_MODEL}` = model (default: opus)
 - `{BUFFER_INTERVAL}` = buffer_interval_ms (default: 150)
 - `{VERIFICATION_RECENCY}` = verification_recency_ms (default: 500)
+- `{GENERATE_REPORTS}` = generate_reports (default: true)
+- `{SCREENSHOT_MODE}` = screenshots (default: "all") - options: all, failures, none
+
+**Determine if reports should be generated:**
+- `{SHOULD_GENERATE_REPORT}` = `{GENERATE_REPORTS}` AND NOT `{SKIP_REPORT}`
+
+**If `{SHOULD_GENERATE_REPORT}`:**
+
+Create report directory structure:
+```
+{REPORT_DIR} = tests/reports/{YYYY-MM-DD}_{TEST_NAME}/
+{REPORT_DIR}/screenshots/
+```
+
+**Tool:** `Bash` to create directories:
+```bash
+mkdir -p "{REPORT_DIR}/screenshots"
+```
+
+Initialize report data:
+```
+{REPORT_DATA} = {
+  test_file: "{TEST_FILE}",
+  device: { id, name, platform, version, type },
+  started_at: ISO timestamp,
+  status: "running",
+  summary: { total: 0, passed: 0, failed: 0, duration_seconds: 0 },
+  tests: []
+}
+```
 
 ### Step 5.6: Start Screenshot Buffer
 
@@ -116,22 +146,74 @@ For each step in `{SETUP_STEPS}`:
 
 For each test in `{TESTS}`:
 
-1. Output header:
+1. **Initialize test tracking:**
+   ```
+   {CURRENT_TEST} = {
+     name: test.name,
+     description: test.description,
+     status: "running",
+     steps_completed: 0,
+     steps_total: count(test.steps),
+     duration_seconds: 0,
+     steps: [],
+     failure: null
+   }
+   {TEST_START_TIME} = current time
+   {STEP_COUNTER} = 0
+   ```
+
+2. Output header:
    ```
    Running: {test.name}
    ────────────────────────────────────────
    ```
 
-2. For each step in test.steps:
-   - Output: `  [{step_num}/{total}] {action}`
+3. For each step in test.steps:
+   - `{STEP_COUNTER}` += 1
+   - Output: `  [{STEP_COUNTER}/{total}] {action}`
    - Execute action
+   - Store result: `{STEP_RESULT}` = success message or error
+   - `{STEP_STATUS}` = "passed" or "failed"
+
+   **Capture screenshot (if reporting enabled):**
+   - **If `{SCREENSHOT_MODE}` = "all":** Always capture
+   - **If `{SCREENSHOT_MODE}` = "failures":** Only capture if `{STEP_STATUS}` = "failed"
+   - **If `{SCREENSHOT_MODE}` = "none":** Skip
+
+   **To capture:**
+   ```bash
+   {SCREENSHOT_PATH} = "{REPORT_DIR}/screenshots/step_{STEP_COUNTER:03d}.png"
+   ```
+   **Tool:** `mcp__mobile-mcp__mobile_save_screenshot` with saveTo={SCREENSHOT_PATH}
+
+   **Record step in report:**
+   ```
+   {CURRENT_TEST}.steps.push({
+     number: {STEP_COUNTER},
+     action: "{action description}",
+     status: "{STEP_STATUS}",
+     result: "{STEP_RESULT}",
+     screenshot: "screenshots/step_{STEP_COUNTER:03d}.png"  // relative path
+   })
+   ```
+
    - Output result: `✓` or `✗ FAILED: {reason}`
-   - On failure: take screenshot, list elements, stop this test
+   - On failure:
+     - Record failure details in `{CURRENT_TEST}.failure`
+     - Stop this test (don't continue steps)
 
 **Important:** After executing any action (tap, swipe, type, press, wait, etc.), update:
 - `{LAST_ACTION_TIMESTAMP}` = current time
 
-3. Output result:
+4. **Finalize test:**
+   ```
+   {CURRENT_TEST}.status = "passed" or "failed"
+   {CURRENT_TEST}.steps_completed = {STEP_COUNTER}
+   {CURRENT_TEST}.duration_seconds = (current time - {TEST_START_TIME})
+   {REPORT_DATA}.tests.push({CURRENT_TEST})
+   ```
+
+5. Output result:
    ```
    ────────────────────────────────────────
    ✓ PASSED  ({passed}/{total} steps in {duration}s)
@@ -181,9 +263,41 @@ rm -rf {BUFFER_DIR}
 ═══════════════════════════════════════
 ```
 
-### Step 10: Generate Report (if --report)
+### Step 10: Generate Report (default, skip with --no-report)
 
-**Tool:** `Write` to `{REPORTS_DIR}/{timestamp}_run.json`
+**If `{SHOULD_GENERATE_REPORT}` is true:**
+
+1. **Finalize report data:**
+   ```
+   {REPORT_DATA}.ended_at = ISO timestamp
+   {REPORT_DATA}.status = "completed"
+   {REPORT_DATA}.summary = {
+     total: count({REPORT_DATA}.tests),
+     passed: count tests with status="passed",
+     failed: count tests with status="failed",
+     duration_seconds: (ended_at - started_at) in seconds
+   }
+   ```
+
+2. **Write JSON report:**
+   **Tool:** `Write` to `{REPORT_DIR}/report.json`
+   Content: `{REPORT_DATA}` as JSON
+
+3. **Generate HTML report:**
+   **Tool:** `Bash`
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/generate-report.py" "{REPORT_DIR}/report.json"
+   ```
+
+4. **Output report location:**
+   ```
+   📊 Report: {REPORT_DIR}/report.html
+   ```
+
+5. **Open report in browser (optional):**
+   ```bash
+   open "{REPORT_DIR}/report.html"
+   ```
 
 ## Action Mapping
 
