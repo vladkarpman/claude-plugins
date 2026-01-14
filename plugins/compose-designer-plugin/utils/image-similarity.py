@@ -15,6 +15,7 @@ Requirements:
 
 import sys
 import argparse
+import json
 from pathlib import Path
 
 try:
@@ -132,10 +133,9 @@ def main():
 
     # Output result
     if args.json:
-        import json
         result = {
-            "similarity": float(f"{score:.4f}"),
-            "threshold_met": bool(score >= 0.92),
+            "similarity": round(score, 4),
+            "threshold_met": score >= 0.92,
             "baseline": args.baseline,
             "current": args.preview,
             "diff_image": args.output if args.output else None
