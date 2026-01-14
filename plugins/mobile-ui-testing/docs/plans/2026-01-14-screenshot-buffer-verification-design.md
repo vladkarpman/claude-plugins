@@ -194,6 +194,28 @@ On test failure, output includes:
 - No impact on test action execution (parallel process)
 - Total buffer size: ~100MB max
 
+## Model Configuration
+
+**Default:** All agents use Opus
+**Override:** Users can configure at project or test level
+
+### Project-level config (`.claude/mobile-ui-testing.yaml`)
+
+```yaml
+# Plugin settings
+model: opus  # Default model for all agents (opus, sonnet, haiku)
+```
+
+### Test-level override
+
+```yaml
+config:
+  app: com.example.app
+  model: sonnet  # Override for this specific test
+```
+
+**Priority:** Test config > Project config > Default (opus)
+
 ## Files to Create/Modify
 
 | File | Action | Purpose |
@@ -201,6 +223,7 @@ On test failure, output includes:
 | `scripts/screenshot-buffer.py` | Create | Background capture process |
 | `scripts/verify-from-buffer.py` | Create | Sequence validation logic |
 | `commands/run-test.md` | Modify | Integrate buffer lifecycle and verification |
+| `commands/lib/load-config.md` | Create | Load and merge config from project + test |
 
 ## Backward Compatibility
 
