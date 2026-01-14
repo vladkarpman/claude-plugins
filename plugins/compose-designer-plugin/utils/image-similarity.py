@@ -103,6 +103,11 @@ def main():
         help='Path to save difference visualization (optional)',
         default=None
     )
+    parser.add_argument(
+        '--json',
+        action='store_true',
+        help='Output result as JSON'
+    )
 
     args = parser.parse_args()
 
@@ -125,8 +130,20 @@ def main():
         args.output
     )
 
-    # Print score to stdout (for parsing by bash scripts)
-    print(f"{score:.4f}")
+    # Output result
+    if args.json:
+        import json
+        result = {
+            "similarity": float(f"{score:.4f}"),
+            "threshold_met": bool(score >= 0.92),
+            "baseline": args.baseline,
+            "current": args.preview,
+            "diff_image": args.output if args.output else None
+        }
+        print(json.dumps(result))
+    else:
+        # Print score to stdout (for parsing by bash scripts)
+        print(f"{score:.4f}")
 
     # Exit with success
     sys.exit(0)
