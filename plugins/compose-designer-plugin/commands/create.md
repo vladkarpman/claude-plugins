@@ -45,19 +45,25 @@ Generate Jetpack Compose code from design input with automated validation and de
 - If Screenshot: Use as baseline directly
 - Create temp directory
 
+**Phase 1.5: Baseline Preprocessing**
+- Detect device frames in baseline image
+- Crop to content area if needed
+- Output: Preprocessed baseline for validation
+
 **Phase 2: Code Generation**
 - Invoke design-generator agent
 - Pass Figma tokens if available
 - Output: Generated .kt file
 
 **Phase 3: Device Validation** (visual-validator agent)
-- Device-centric loop:
-  - Build → Deploy → Screenshot → Compare → Refine
-- Continue until SSIM ≥ threshold or max iterations
+- Device-centric loop with LLM Vision primary:
+  - Build → Deploy → Screenshot → LLM Compare → Refine
+- SSIM as secondary metric for logging
+- Continue until LLM approves or max iterations
 - Output: Validated .kt file + screenshots
 
 **Phase 4: Final Report**
-- Summarize results
+- Summarize results with LLM verdict
 - Offer commit option
 
 ---
@@ -113,9 +119,10 @@ Use TodoWrite to create workflow tasks:
 ```json
 [
   {"content": "Load configuration and validate inputs", "status": "pending", "activeForm": "Loading configuration"},
-  {"content": "Process input and extract Figma tokens (if URL)", "status": "pending", "activeForm": "Processing input"},
-  {"content": "Generate initial Compose code", "status": "pending", "activeForm": "Generating code"},
-  {"content": "Device validation loop (SSIM + LLM vision)", "status": "pending", "activeForm": "Validating on device"},
+  {"content": "Process design input (Phase 1)", "status": "pending", "activeForm": "Processing design input"},
+  {"content": "Preprocess baseline (Phase 1.5)", "status": "pending", "activeForm": "Preprocessing baseline"},
+  {"content": "Generate initial Compose code (Phase 2)", "status": "pending", "activeForm": "Generating Compose code"},
+  {"content": "Device validation with LLM Vision (Phase 3)", "status": "pending", "activeForm": "Validating on device"},
   {"content": "Generate final report", "status": "pending", "activeForm": "Generating report"}
 ]
 ```
@@ -201,7 +208,49 @@ fi
 
 **Step 2: Update todo**
 
-Mark "Process design input" as completed, start "Generate initial Compose code".
+Mark "Process design input (Phase 1)" as completed, start "Preprocess baseline (Phase 1.5)".
+
+### Phase 1.5: Baseline Preprocessing
+
+Preprocess the baseline image to detect and remove device frames, crop to content area, and prepare for validation.
+
+**Step 1: Invoke baseline-preprocessor agent**
+
+Use Task tool to launch the preprocessing agent:
+
+```
+Task tool:
+  subagent_type: "compose-designer:baseline-preprocessor"
+  model: {config.model.baseline_preprocessor || config.model.default}
+  description: "Preprocess baseline image"
+  prompt: "Preprocess baseline image at {baseline_path}.
+
+  Config:
+  - Visual similarity threshold: {config.validation.visual_similarity_threshold}
+
+  Detect device frames, crop to content area, and return preprocessed image path."
+```
+
+**Step 2: Store preprocessing results**
+
+Agent will return:
+- `preprocessed_baseline_path`: Path to the preprocessed image
+- `frames_detected`: Boolean indicating if device frames were found
+- `recommended_threshold`: Optional adjusted threshold based on content type
+- `content_bounds`: Crop coordinates if frames were detected
+
+Save these values for use in Phase 3:
+
+```bash
+# Store results from agent
+preprocessed_baseline_path="{returned_path}"
+frames_detected="{returned_frames_detected}"
+recommended_threshold="{returned_threshold:-$config_threshold}"
+```
+
+**Step 3: Update todo**
+
+Mark "Preprocess baseline (Phase 1.5)" as completed, start "Generate initial Compose code (Phase 2)".
 
 ### Phase 2: Code Generation (design-generator agent)
 
@@ -288,22 +337,29 @@ Task tool:
   subagent_type: "compose-designer:visual-validator"
   model: {config.model.visual_validator || config.model.default}
   description: "Validate UI on device"
-  prompt: "Validate Compose code in {output_file_path} against baseline {baseline_path}.
+  prompt: "Validate Compose code in {output_file_path} against preprocessed baseline {preprocessed_baseline_path}.
 
   Inputs:
   - kotlin_file_path: {output_file_path}
   - baseline_image_path: {baseline_path}
+  - preprocessed_baseline_path: {preprocessed_baseline_path}
+  - component_name: {name}
   - package_name: {config.output.package_base}
   - temp_dir: {temp_dir}
-  - threshold: {config.validation.visual_similarity_threshold}
-  - max_iterations: {config.validation.max_ralph_iterations}
+  - config:
+    - validation.visual_similarity_threshold: {config.validation.visual_similarity_threshold}
+    - validation.max_ralph_iterations: {config.validation.max_ralph_iterations}
+    - validation.ssim_sanity_threshold: {config.validation.ssim_sanity_threshold}
+    - validation.primary_method: {config.validation.primary_method}
+
+  Use LLM Vision as primary validation. SSIM for logging only.
 
   The agent will:
   1. Build APK and deploy to device
   2. Capture device screenshot
-  3. Compare with SSIM (threshold: 0.92)
-  4. If below threshold: analyze with LLM vision, apply fixes, repeat
-  5. Return when threshold reached or max iterations
+  3. Compare with LLM Vision (primary) and SSIM (secondary/logging)
+  4. If LLM detects differences: analyze issues, apply fixes, repeat
+  5. Return when LLM approves or max iterations reached
 
   Save screenshots and diffs to: {temp_dir}/"
 ```
@@ -314,10 +370,14 @@ Agent will return JSON:
 ```json
 {
   "status": "SUCCESS|STUCK|MAX_ITERATIONS",
-  "final_similarity": 0.93,
+  "llm_verdict": "PASS|FAIL",
+  "llm_confidence": "HIGH|MEDIUM|LOW",
+  "final_ssim": 0.93,
   "iterations": 4,
   "screenshots": ["iteration-1.png", ...],
-  "diff_images": ["diff-1.png", ...]
+  "diff_images": ["diff-1.png", ...],
+  "sanity_warning": false,
+  "summary": "LLM approved with high confidence. Minor spacing differences noted but within acceptable bounds."
 }
 ```
 
@@ -325,7 +385,8 @@ Agent will return JSON:
 
 If status is STUCK or MAX_ITERATIONS:
 ```
-Ask user: "Visual validation incomplete. Similarity: {final_similarity} (target: {threshold}).
+Ask user: "Visual validation incomplete. LLM Verdict: {llm_verdict} (Confidence: {llm_confidence}).
+SSIM: {final_ssim:.2%} (threshold: {threshold:.2%})
 
 Options:
 1. Accept current result and continue
@@ -338,7 +399,7 @@ What would you like to do? [1/2/3/4]: "
 
 **Step 5: Update todo**
 
-Mark "Device validation loop" as completed, start "Generate final report".
+Mark "Device validation with LLM Vision (Phase 3)" as completed, start "Generate final report".
 
 ### Phase 4: Final Report and Commit
 
@@ -351,6 +412,10 @@ Compile results from all phases:
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+📥 Phase 1.5: Baseline Preprocessing
+✓ Frames detected: {frames_detected ? "Yes (cropped to content)" : "No (used original)"}
+✓ Preprocessed baseline: {preprocessed_baseline_path}
+
 📥 Phase 2: Code Generation
 ✓ Input: {input_source}
 ✓ Baseline: {baseline_path}
@@ -359,18 +424,21 @@ Compile results from all phases:
 ✓ Figma tokens: {used_figma_tokens ? "✓ Extracted" : "N/A (screenshot input)"}
 
 📱 Phase 3: Device Validation
-✓ Method: Device-centric (SSIM + LLM vision)
-✓ Iterations: {iteration_count}/{max_iterations}
-✓ Final similarity: {similarity_score:.2%} (target: {threshold:.2%})
+✓ Method: LLM Vision primary (SSIM secondary)
+✓ LLM Verdict: {llm_verdict} (Confidence: {llm_confidence})
+✓ Iterations: {iteration_count}/{config.validation.max_ralph_iterations}
+✓ Final SSIM: {final_ssim:.2%} (threshold: {config.validation.visual_similarity_threshold:.2%})
 ✓ Status: {status}
 ✓ Device: {device_name}
-{if status != "SUCCESS": "⚠️  {status}: Manual review recommended"}
+{if sanity_warning: "⚠️  LLM passed but SSIM below sanity threshold - manual review recommended"}
+{if status != "SUCCESS": "⚠️  {status}: {summary}"}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📁 Generated Files:
   • Component: {output_file_path}
   • Baseline: {baseline_path}
+  • Preprocessed: {preprocessed_baseline_path}
   • Artifacts: {temp_dir}/
     - iteration-*.png (device screenshots)
     - diff-*.png (difference visualizations)
@@ -423,12 +491,12 @@ git commit -m "feat: add {ComponentName} generated from design
 
 Generated using compose-designer plugin:
 - Input: {input_source}
-- Visual similarity: {similarity_score:.1%}
+- LLM Verdict: {llm_verdict} (Confidence: {llm_confidence})
+- SSIM: {final_ssim:.1%}
 - Device tested: ✓ ({device_name})
-- Interactions: {passed_count}/{interaction_count} passed
 
 Code generation: Complete
-Device validation: {iteration_count} iterations, {similarity_score:.1%} similarity"
+Device validation: {iteration_count} iterations, LLM Vision primary"
 ```
 
 **Step 4: Mark all todos complete**
@@ -563,15 +631,16 @@ Would you like to:
 Choose [1/2/3]:
 ```
 
-**Similarity threshold not reached:**
+**Validation threshold not reached:**
 ```
 ⚠️  Visual validation incomplete
 
-Final similarity: {score:.1%} (target: {threshold:.1%})
+LLM Verdict: {llm_verdict} (Confidence: {llm_confidence})
+Final SSIM: {score:.1%} (threshold: {threshold:.1%})
 Iterations: {max_iterations}/{max_iterations} (limit reached)
 
 Differences:
-{list major visual differences from last diff}
+{list major visual differences from LLM analysis}
 
 Options:
 1. Accept current quality and continue
