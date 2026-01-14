@@ -1,7 +1,7 @@
 ---
 name: create
 description: Generate Compose code from design input (screenshot/Figma/clipboard) through three-phase workflow
-argument-hint: --input <path|url> --name <ComponentName> --type <component|screen> [--clipboard] [--batch]
+argument-hint: --input <path|url> --name <ComponentName> --type <component|screen> [--clipboard] [--batch] [--device <device-id>]
 allowed-tools:
   - Read
   - Write
@@ -329,6 +329,7 @@ Task tool:
   - Test package: {config.testing.test_activity_package}
   - Test activity: {config.testing.test_activity_name}
   - Device ID: {config.testing.device_id}
+  - Device override (CLI): {device_argument or 'none'}
   - Interaction depth: {config.testing.interaction_depth}
 
   Steps:
