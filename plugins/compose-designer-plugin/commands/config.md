@@ -127,9 +127,11 @@ preview:
 
 # Validation thresholds
 validation:
-  visual_similarity_threshold: 0.92    # 0.0-1.0, higher = stricter matching
-  max_ralph_iterations: 8              # Max iterations for ralph-wiggum loop
+  visual_similarity_threshold: 0.92    # SSIM sanity check threshold (from config)
+  max_ralph_iterations: 10             # Max iterations for refinement loop
   preview_screenshot_delay: "auto"     # "auto" or milliseconds
+  primary_method: "llm_vision"         # "llm_vision" or "ssim" (legacy)
+  ssim_sanity_threshold: 0.4           # Flag for review if LLM passes but SSIM below this
 
 # Batch processing
 batch:

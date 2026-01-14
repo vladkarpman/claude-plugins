@@ -33,6 +33,8 @@ validation:
   visual_similarity_threshold: 0.92
   max_ralph_iterations: 10
   preview_screenshot_delay: "auto"
+  primary_method: "llm_vision"         # "llm_vision" or "ssim" (legacy)
+  ssim_sanity_threshold: 0.4           # Flag for review if LLM passes but SSIM below this
 
 # Batch processing
 batch:
@@ -49,8 +51,8 @@ testing:
 # Figma integration
 figma:
   extract_tokens: true
-  api_token_source: "config"
-  api_token: "REDACTED_FIGMA_TOKEN"
+  api_token_source: "env"              # Use FIGMA_TOKEN env var
+  api_token: ""                        # Leave empty when using env source
   fallback_to_image: true
 
 # Output preferences
