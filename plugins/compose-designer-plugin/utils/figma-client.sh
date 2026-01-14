@@ -58,11 +58,14 @@ Get your personal access token:
 parse_url() {
     local url="$1"
 
-    # Extract file ID (portable sed alternative)
-    file_id=$(echo "$url" | sed -n 's|.*\(file\|design\)/\([^/?]*\).*|\2|p')
+    # Extract file ID (portable: works on macOS and Linux)
+    file_id=$(echo "$url" | grep -oE '(file|design)/[^/]+' | head -1 | cut -d'/' -f2)
 
     # Extract node ID (may have format like "123:456" or "123-456") (portable sed alternative)
     node_id=$(echo "$url" | sed -n 's/.*node-id=\([^&]*\).*/\1/p')
+
+    # Normalize node ID: convert dash to colon (Figma API requires colon format)
+    node_id=$(echo "$node_id" | sed 's/-/:/g')
 
     # Validate
     if [ -z "$file_id" ]; then
@@ -137,8 +140,8 @@ export_image() {
     response=$(curl -s -H "X-Figma-Token: $FIGMA_TOKEN" \
         "https://api.figma.com/v1/images/$file_id?ids=$encoded_node_id&format=$format&scale=$scale")
 
-    # Check for errors
-    if echo "$response" | grep -q '"err"'; then
+    # Check for errors (err:null means success, err:"message" means failure)
+    if echo "$response" | grep -q '"err":"'; then
         # Extract error message (portable sed alternative)
         err_msg=$(echo "$response" | sed -n 's/.*"err":"\([^"]*\)".*/\1/p')
         [ -z "$err_msg" ] && err_msg="Unknown error"
