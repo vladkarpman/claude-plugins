@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins by Vladislav Karpman",
-    "version": "1.2.5"
+    "version": "1.2.6"
   },
   "plugins": [
     {
@@ -20,7 +20,7 @@
       "name": "compose-designer",
       "source": "./plugins/compose-designer-plugin",
       "description": "Transform design mockups into production-ready Jetpack Compose code through automated three-phase workflow with visual validation and device testing.",
-      "version": "0.3.0",
+      "version": "0.5.0",
       "strict": true
     }
   ]
