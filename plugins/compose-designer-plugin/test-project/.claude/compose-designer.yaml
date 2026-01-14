@@ -3,7 +3,11 @@
 
 # Agent model configuration
 model:
-  default: "opus"  # "opus", "sonnet", or "haiku"
+  default: "opus"              # Fallback model
+  design_generator: "opus"     # Vision-heavy: analyzes designs
+  visual_validator: "opus"     # Vision-heavy: compares screenshots
+  baseline_preprocessor: "opus"
+  device_tester: "opus"
 
 # Project conventions
 naming:

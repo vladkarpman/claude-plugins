@@ -100,7 +100,11 @@ The final YAML file must have actual values, not placeholder tokens.
 
 # Agent model configuration
 model:
-  default: "opus"                        # Default model for all agents: "opus", "sonnet", or "haiku"
+  default: "opus"                        # Fallback for any agent not specified below
+  design_generator: "opus"               # Analyzes designs, generates code (vision-heavy)
+  visual_validator: "opus"               # Compares screenshots, suggests fixes (vision-heavy)
+  baseline_preprocessor: "opus"          # Detects device frames, crops images
+  device_tester: "opus"                  # Tests interactions on device
 
 # Project conventions
 naming:

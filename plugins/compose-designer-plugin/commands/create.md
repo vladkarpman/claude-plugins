@@ -212,7 +212,7 @@ Use Task tool to launch agent:
 ```
 Task tool:
   subagent_type: "compose-designer:design-generator"
-  model: {config.model.default}  # From config, defaults to "opus"
+  model: {config.model.design_generator || config.model.default}
   description: "Generate Compose code from design"
   prompt: "Generate Compose code for {name} ({type}) from baseline image at {baseline_path}.
 
@@ -286,7 +286,7 @@ Use Task tool:
 ```
 Task tool:
   subagent_type: "compose-designer:visual-validator"
-  model: {config.model.default}  # From config, defaults to "opus"
+  model: {config.model.visual_validator || config.model.default}
   description: "Validate UI on device"
   prompt: "Validate Compose code in {output_file_path} against baseline {baseline_path}.
 
