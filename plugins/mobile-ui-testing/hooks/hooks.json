@@ -1,5 +1,5 @@
 {
-  "description": "Auto-approve mobile-mcp tools for seamless test execution",
+  "description": "Auto-approve mobile-mcp tools and manage scrcpy-helper lifecycle",
   "hooks": {
     "SessionStart": [
       {
@@ -7,6 +7,16 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-end.sh"
           }
         ]
       }
