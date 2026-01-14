@@ -1,8 +1,16 @@
 #!/bin/bash
-# Extract design tokens from Figma via MCP
+# Figma Token Extraction Utility
+#
+# Parses a Figma URL and outputs JSON metadata for use with Figma MCP tools.
+# This script does NOT extract actual tokens - it provides the file_id and node_id
+# needed to call Figma MCP tools (get_design_context, get_variable_defs, get_screenshot).
 #
 # Usage: ./figma-tokens.sh <figma-url>
-# Output: JSON with extracted color, spacing, typography tokens
+# Output: JSON with file_id, node_id, and list of MCP tools to call
+#
+# Example:
+#   ./figma-tokens.sh "https://www.figma.com/design/ABC123/MyDesign?node-id=1-234"
+#   # Returns: {"file_id": "ABC123", "node_id": "1:234", ...}
 
 set -euo pipefail
 
@@ -35,6 +43,14 @@ info "Note: This script outputs token info. Use Figma MCP tools directly for ful
 
 # Parse URL
 IFS='|' read -r file_id node_id <<< "$(parse_url "$FIGMA_URL")"
+
+# Validate extracted values
+if [ -z "$file_id" ]; then
+    error "Could not extract file_id from URL: $FIGMA_URL"
+fi
+if [ -z "$node_id" ]; then
+    error "Could not extract node_id from URL: $FIGMA_URL"
+fi
 
 echo "{"
 echo "  \"file_id\": \"$file_id\","
