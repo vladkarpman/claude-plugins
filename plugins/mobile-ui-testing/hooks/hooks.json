@@ -1,5 +1,5 @@
 {
-  "description": "Auto-approve mobile-mcp tools and manage scrcpy-helper lifecycle",
+  "description": "Auto-approve mobile-mcp and screen-buffer tools",
   "hooks": {
     "SessionStart": [
       {
@@ -24,6 +24,15 @@
     "PreToolUse": [
       {
         "matcher": "mcp__mobile-mcp__*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"decision\": \"approve\"}'"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__screen-buffer__*",
         "hooks": [
           {
             "type": "command",
