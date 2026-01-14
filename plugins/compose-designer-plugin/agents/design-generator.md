@@ -220,6 +220,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -238,8 +239,10 @@ fun {Name}{Suffix}(
     // If stateless: add callback parameters (onButtonClick, onTextChange, etc.)
 ) {
     // Main layout (Column, Row, or Box based on analysis)
+    // IMPORTANT: Always add testTag for visual validation (used to extract component bounds)
     {LayoutType}(
         modifier = modifier
+            .testTag("{Name}{Suffix}")  // Required for validation - matches component name
             {.fillMaxWidth() if appropriate}
             {.padding(16.dp) if has padding},
         // Layout-specific properties:
@@ -304,23 +307,32 @@ private fun {Name}{Suffix}Preview() {
    - Screen: `{name}{config.naming.screen_suffix}`
    - Preview: `{name}{suffix}Preview`
 
-2. **Architecture:**
+2. **Test Tags (Required for Validation):**
+   - Always add `.testTag("{ComponentName}")` to the root composable's modifier
+   - Tag format: Matches the full component/screen name (e.g., `"ProfileCardComponent"`, `"LoginScreen"`)
+   - Apply to the outermost composable element only (not nested elements)
+   - Purpose: Used by visual-validator for component bounds extraction during device testing
+   - Must be unique within the screen to enable accurate screenshot cropping
+   - Import required: `androidx.compose.ui.platform.testTag`
+
+3. **Architecture:**
    - If `config.architecture.stateless_components`: No `remember`, pass state as params
    - If `config.architecture.state_hoisting`: Hoist state to preview or parent
    - Use callback lambdas for actions: `onClick: () -> Unit`
 
-3. **Theme Integration:**
+4. **Theme Integration:**
    - Prefer `MaterialTheme.colorScheme.*` over `Color(0xFFxxxxxx)`
    - Prefer `MaterialTheme.typography.*` over hardcoded TextStyle
    - Document when hardcoded values are necessary
 
-4. **Comments:**
+5. **Comments:**
    - If `config.output.include_comments`: Add brief explanations
    - Always add KDoc for public composables
    - Add TODO comments for missing assets/icons
 
-5. **Imports:**
+6. **Imports:**
    - Only import what's used
+   - Always include `testTag` import for validation support
    - Group: compose.foundation, compose.material3, compose.runtime, compose.ui
 
 ### Step 5: Write File and Verify
