@@ -232,7 +232,7 @@ main() {
     # ═══════════════════════════════════════════════════
 
     # Check required directories
-    for dir in ".claude-plugin" "commands" "agents" "utils" "examples" "tests" "docs"; do
+    for dir in ".claude-plugin" "commands" "agents" "utils" "examples" "tests" "docs" "prompts"; do
         if [ -d "$dir" ]; then
             pass "Directory exists: $dir"
         else
@@ -286,7 +286,8 @@ main() {
 
     # Check for non-portable grep patterns
     info "Checking for non-portable grep patterns..."
-    if grep -r "grep -P" --include="*.sh" --include="*.md" --exclude="validate-plugin.sh" . 2>/dev/null | grep -v "# BEFORE:" > /dev/null; then
+    # Exclude CLAUDE.md files (they document what not to do), validate-plugin.sh (this script)
+    if grep -r "grep -P" --include="*.sh" --include="*.md" --exclude="validate-plugin.sh" --exclude="*CLAUDE.md" . 2>/dev/null | grep -v "# BEFORE:" > /dev/null; then
         fail "Found non-portable grep -P usage (not available on macOS)"
     else
         pass "No non-portable grep -P patterns found"
@@ -299,6 +300,63 @@ main() {
         pass "Found $plugin_root_count references to CLAUDE_PLUGIN_ROOT (portability)"
     else
         warn "No CLAUDE_PLUGIN_ROOT references found (may affect portability)"
+    fi
+
+    # ═══════════════════════════════════════════════════
+    section "10. Validation Pipeline V2 Files"
+    # ═══════════════════════════════════════════════════
+
+    # Check prompts directory exists
+    if [ -d "prompts" ]; then
+        pass "prompts/ directory exists"
+    else
+        fail "prompts/ directory missing"
+    fi
+
+    # Check LLM Vision prompt exists
+    if check_file "prompts/llm-vision-validation.md" "LLM Vision validation prompt"; then
+        # Verify it has content
+        if [ -s "prompts/llm-vision-validation.md" ]; then
+            pass "LLM Vision validation prompt has content"
+        else
+            fail "LLM Vision validation prompt is empty"
+        fi
+    fi
+
+    # Check extract-component-bounds.py
+    if check_file "utils/extract-component-bounds.py" "Extract component bounds utility"; then
+        check_executable "utils/extract-component-bounds.py" "Extract component bounds utility"
+
+        # Test functionality with mock data
+        info "Testing extract-component-bounds.py..."
+        echo '[{"testTag": "Test", "bounds": {"x": 0, "y": 0, "width": 100, "height": 100}}]' > /tmp/test-hierarchy.json
+        local extract_result=$(python3 "utils/extract-component-bounds.py" /tmp/test-hierarchy.json Test 2>/dev/null || true)
+        if echo "$extract_result" | grep -q '"found": true'; then
+            pass "extract-component-bounds.py works correctly"
+        else
+            fail "extract-component-bounds.py failed: $extract_result"
+        fi
+        rm -f /tmp/test-hierarchy.json
+    fi
+
+    # Check crop-image.py
+    if check_file "utils/crop-image.py" "Crop image utility"; then
+        check_executable "utils/crop-image.py" "Crop image utility"
+
+        # Test functionality (requires PIL)
+        info "Testing crop-image.py..."
+        if python3 -c "from PIL import Image" 2>/dev/null; then
+            python3 -c "from PIL import Image; img = Image.new('RGB', (200, 200), 'red'); img.save('/tmp/test-crop-input.png')"
+            local crop_result=$(python3 "utils/crop-image.py" /tmp/test-crop-input.png /tmp/test-crop-output.png 10 10 50 50 2>&1 || true)
+            if [ -f "/tmp/test-crop-output.png" ]; then
+                pass "crop-image.py works correctly"
+            else
+                fail "crop-image.py failed: $crop_result"
+            fi
+            rm -f /tmp/test-crop-input.png /tmp/test-crop-output.png
+        else
+            warn "Skipping crop-image.py test (PIL not installed)"
+        fi
     fi
 
     # ═══════════════════════════════════════════════════
