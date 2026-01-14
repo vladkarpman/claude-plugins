@@ -8,6 +8,7 @@ A Claude Code plugin for writing and running YAML-based mobile UI tests with [mo
 ## Features
 
 - **Auto-permissions** - mobile-mcp tools auto-approved, no manual confirmation needed
+- **scrcpy 3.x acceleration** - ~45 FPS capture with ~10ms input latency (optional)
 - **`/run-test`** - Execute YAML test files with detailed output and HTML reports
 - **`/create-test`** - Scaffold new test files with proper structure
 - **`/generate-test`** - Generate tests from natural language descriptions
@@ -45,13 +46,17 @@ Before using this plugin, ensure you have:
    choco install ffmpeg
    ```
 
+5. **scrcpy 3.x** (optional, for accelerated screenshots/input)
+   - Install from [scrcpy releases](https://github.com/Genymobile/scrcpy/releases)
+   - Version 3.0+ required for MYScrcpy compatibility
+
 ## Installation
 
 ### Option 1: Direct from GitHub (Recommended)
 
 ```bash
 # Install specific version
-/plugin install github:vladkarpman/mobile-ui-testing#v3.3.1
+/plugin install github:vladkarpman/mobile-ui-testing#v3.4.0
 
 # Or install latest
 /plugin install github:vladkarpman/mobile-ui-testing
@@ -105,6 +110,29 @@ pip install -r scripts/requirements.txt
 - `imagehash>=4.3.0` - Perceptual hashing for checkpoint detection
 
 **Note:** These are only needed for the verification interview feature during `/stop-recording`. Basic test creation and execution work without these dependencies.
+
+### scrcpy-helper (Optional)
+
+For ~45 FPS screenshots and ~10ms input latency (vs ~500ms with mobile-mcp alone), install scrcpy-helper:
+
+**Requirements:**
+- Python 3.11+ (MYScrcpy requirement)
+- scrcpy 3.x installed
+- Android device only (iOS not supported)
+
+**Setup:**
+```bash
+cd scripts/scrcpy_helper
+python3.12 -m venv .venv
+.venv/bin/pip install mysc Pillow imagehash numpy adbutils
+```
+
+**Verify installation:**
+```bash
+.venv/bin/python -c "from myscrcpy.core import Session; print('MYScrcpy ready')"
+```
+
+scrcpy-helper starts automatically on session start if the venv is configured. Falls back to mobile-mcp gracefully if unavailable.
 
 ## Quick Start
 
@@ -346,7 +374,7 @@ tests:
       - verify_screen: "Expected state"
 ```
 
-## Test Folder Structure (v2.0+)
+## Test Folder Structure (v3.3+)
 
 New recordings create an organized folder structure:
 
@@ -354,9 +382,12 @@ New recordings create an organized folder structure:
 tests/
 └── login-flow/
     ├── test.yaml              # Test definition
-    ├── touch_events.json      # Raw touch data with timestamps
-    ├── recording.mp4          # Video recording (for debugging)
-    └── screenshots/           # Extracted frames from video
+    └── recording/             # Recording artifacts (for debugging)
+        ├── touch_events.json      # Raw touch data with timestamps
+        ├── typing_sequences.json  # Detected keyboard typing
+        ├── verifications.json     # User-selected checkpoints
+        ├── recording.mp4          # Video recording
+        └── screenshots/           # Extracted frames from video
 ```
 
 Note: The `tests/` folder is gitignored - test artifacts are local only.
