@@ -28,3 +28,12 @@ Thumbs.db
 
 # Build artifacts
 *.log
+
+# Android/Gradle
+local.properties
+.gradle/
+build/
+test-harness/.gradle/
+test-harness/build/
+test-project/.gradle/
+test-project/build/
