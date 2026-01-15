@@ -355,6 +355,10 @@ When action uses element text (e.g., `tap: "Login"`):
 | `wait: 2s` | Pause for 2 seconds (no tool call needed) |
 | `launch_app` | `mcp__mobile-mcp__mobile_launch_app` with config.app |
 | `terminate_app` | `mcp__mobile-mcp__mobile_terminate_app` with config.app |
+| `clear_app_data` | `Bash`: `adb -s {DEVICE_ID} shell pm clear {package}` with config.app |
+| `clear_app_data: "pkg"` | `Bash`: `adb -s {DEVICE_ID} shell pm clear pkg` |
+| `revoke_permissions` | `Bash`: `adb -s {DEVICE_ID} shell pm reset-permissions -p {package}` with config.app |
+| `revoke_permissions: "pkg"` | `Bash`: `adb -s {DEVICE_ID} shell pm reset-permissions -p pkg` |
 | `screenshot: "name"` | `mcp__screen-buffer__device_screenshot` (save base64 to path) |
 | `set_orientation: landscape` | `mcp__mobile-mcp__mobile_set_orientation` |
 | `open_url: "https://..."` | `mcp__mobile-mcp__mobile_open_url` |
