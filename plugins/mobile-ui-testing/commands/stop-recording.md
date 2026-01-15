@@ -42,6 +42,12 @@ Start a new recording with:
 - `{PRECONDITION_DESCRIPTION}` = preconditionDescription (if type is "precondition")
 - `{PRECONDITION_FOLDER}` = preconditionFolder (if type is "precondition")
 
+**Set common folder variable:**
+- If `{RECORDING_TYPE}` is "precondition": Set `{TEST_FOLDER}` = `{PRECONDITION_FOLDER}`
+- Otherwise: `{TEST_FOLDER}` is already set from testFolder
+
+This ensures subsequent steps can use `{TEST_FOLDER}` consistently regardless of recording type.
+
 ### Step 2: Stop Screenrecord on Device (CRITICAL)
 
 **Tool:** `Bash`
