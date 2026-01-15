@@ -525,8 +525,412 @@
     <script>
         // Data embedded during generation
         const testData = {{testDataJSON}};
+        let steps = [...testData.steps];
+        let activeStepId = null;
 
-        // Will be populated in Task 3
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', () => {
+            renderSteps();
+            initVideo();
+        });
+
+        // Video Control
+        function initVideo() {
+            const video = document.getElementById('video');
+            const timeline = document.getElementById('timeline');
+            const progress = document.getElementById('progress');
+
+            video.addEventListener('timeupdate', () => {
+                const percent = (video.currentTime / video.duration) * 100;
+                progress.style.width = percent + '%';
+                document.getElementById('currentTime').textContent = formatTime(video.currentTime);
+            });
+
+            video.addEventListener('loadedmetadata', () => {
+                document.getElementById('duration').textContent = formatTime(video.duration);
+                renderTimelineMarkers();
+            });
+        }
+
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${m}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function seekToPosition(event) {
+            const video = document.getElementById('video');
+            const timeline = document.getElementById('timeline');
+            const rect = timeline.getBoundingClientRect();
+            const percent = (event.clientX - rect.left) / rect.width;
+            video.currentTime = percent * video.duration;
+        }
+
+        function seekToStep(stepId) {
+            const step = steps.find(s => s.id === stepId);
+            if (step && step.timestamp !== undefined) {
+                document.getElementById('video').currentTime = step.timestamp;
+            }
+            setActiveStep(stepId);
+        }
+
+        function renderTimelineMarkers() {
+            const timeline = document.getElementById('timeline');
+            const video = document.getElementById('video');
+
+            // Remove existing markers
+            timeline.querySelectorAll('.video-marker').forEach(m => m.remove());
+
+            steps.forEach(step => {
+                if (step.timestamp !== undefined && step.action !== 'verify_screen' && step.action !== 'wait_for' && step.action !== 'wait') {
+                    const marker = document.createElement('div');
+                    marker.className = 'video-marker';
+                    marker.style.left = (step.timestamp / video.duration * 100) + '%';
+                    marker.onclick = (e) => {
+                        e.stopPropagation();
+                        seekToStep(step.id);
+                    };
+                    timeline.appendChild(marker);
+                }
+            });
+        }
+
+        // Step Rendering
+        function renderSteps() {
+            const panel = document.getElementById('stepsPanel');
+            panel.innerHTML = steps.map((step, index) => renderStepCard(step, index)).join('');
+            renderTimelineMarkers();
+        }
+
+        function renderStepCard(step, index) {
+            const actionClass = step.action.replace('_', '');
+            const isActive = step.id === activeStepId;
+
+            return `
+                <div class="step-card ${isActive ? 'active' : ''}" data-id="${step.id}" onclick="seekToStep('${step.id}')">
+                    <div class="step-header">
+                        <div class="step-title">
+                            <span class="step-number">${index + 1}</span>
+                            <span class="step-action ${actionClass}">${step.action}: ${getStepTargetDisplay(step)}</span>
+                        </div>
+                        <div class="step-controls">
+                            <button onclick="moveStep('${step.id}', -1); event.stopPropagation();" title="Move up">↑</button>
+                            <button onclick="moveStep('${step.id}', 1); event.stopPropagation();" title="Move down">↓</button>
+                            <button class="delete" onclick="deleteStep('${step.id}'); event.stopPropagation();" title="Delete">×</button>
+                        </div>
+                    </div>
+
+                    ${step.frames ? renderFrames(step) : ''}
+
+                    ${step.analysis ? renderAnalysis(step.analysis) : ''}
+
+                    ${step.suggestedVerification && !step.verificationAdded ? renderSuggestion(step) : ''}
+
+                    <div class="step-editor">
+                        ${renderStepEditor(step)}
+                    </div>
+                </div>
+            `;
+        }
+
+        function getStepTargetDisplay(step) {
+            if (step.action === 'tap' || step.action === 'wait_for') {
+                return step.target?.text || `(${step.target?.x}, ${step.target?.y})`;
+            }
+            if (step.action === 'verify_screen') {
+                return `"${step.description || ''}"`;
+            }
+            if (step.action === 'wait') {
+                return `${step.duration || 0}ms`;
+            }
+            return '';
+        }
+
+        function renderFrames(step) {
+            if (!step.frames) return '';
+
+            const beforeFrame = step.frames.before?.[0] || '';
+            const afterFrame = step.frames.after?.[0] || '';
+            const actionFrame = step.frames.before?.[step.frames.before.length - 1] || beforeFrame;
+
+            return `
+                <div class="step-frames">
+                    ${beforeFrame ? `
+                        <div class="frame-container before">
+                            <span class="frame-label before">Before</span>
+                            <img class="frame-img" src="${beforeFrame}" onclick="openModal('${beforeFrame}'); event.stopPropagation();">
+                        </div>
+                        <span class="frame-arrow">→</span>
+                    ` : ''}
+                    ${actionFrame && step.action === 'tap' ? `
+                        <div class="frame-container action">
+                            <span class="frame-label action">Action</span>
+                            <img class="frame-img" src="${actionFrame}" onclick="openModal('${actionFrame}'); event.stopPropagation();">
+                        </div>
+                        <span class="frame-arrow">→</span>
+                    ` : ''}
+                    ${afterFrame ? `
+                        <div class="frame-container after">
+                            <span class="frame-label after">After</span>
+                            <img class="frame-img" src="${afterFrame}" onclick="openModal('${afterFrame}'); event.stopPropagation();">
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function renderAnalysis(analysis) {
+            return `
+                <div class="step-analysis">
+                    ${analysis.before ? `<div class="analysis-row"><span class="analysis-label">Before:</span><span class="analysis-value">${analysis.before}</span></div>` : ''}
+                    ${analysis.action ? `<div class="analysis-row"><span class="analysis-label">Action:</span><span class="analysis-value">${analysis.action}</span></div>` : ''}
+                    ${analysis.after ? `<div class="analysis-row"><span class="analysis-label">After:</span><span class="analysis-value">${analysis.after}</span></div>` : ''}
+                </div>
+            `;
+        }
+
+        function renderSuggestion(step) {
+            return `
+                <div class="step-suggestion">
+                    <div class="suggestion-header">💡 Suggested verification</div>
+                    <div class="suggestion-text">verify_screen: "${step.suggestedVerification}"</div>
+                    <div class="suggestion-actions">
+                        <button class="btn btn-primary" onclick="acceptSuggestion('${step.id}'); event.stopPropagation();">+ Add</button>
+                        <button class="btn btn-secondary" onclick="editSuggestion('${step.id}'); event.stopPropagation();">Edit</button>
+                        <button class="btn btn-secondary" onclick="skipSuggestion('${step.id}'); event.stopPropagation();">Skip</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderStepEditor(step) {
+            if (step.action === 'tap') {
+                return `
+                    <div class="editor-field">
+                        <label>Target:</label>
+                        <input type="text" value="${step.target?.text || ''}" onchange="updateStepTarget('${step.id}', this.value); event.stopPropagation();" placeholder="Element text">
+                    </div>
+                    <div class="editor-field">
+                        <label>Wait after:</label>
+                        <input type="number" value="${step.waitAfter || 0}" onchange="updateStepWait('${step.id}', this.value); event.stopPropagation();" min="0" step="100"> ms
+                    </div>
+                `;
+            }
+            if (step.action === 'verify_screen') {
+                return `
+                    <div class="editor-field" style="flex: 1;">
+                        <label>Description:</label>
+                        <input type="text" value="${step.description || ''}" onchange="updateStepDescription('${step.id}', this.value); event.stopPropagation();" style="width: 300px;">
+                    </div>
+                `;
+            }
+            if (step.action === 'wait_for') {
+                return `
+                    <div class="editor-field">
+                        <label>Element:</label>
+                        <input type="text" value="${step.target?.text || ''}" onchange="updateStepTarget('${step.id}', this.value); event.stopPropagation();">
+                    </div>
+                    <div class="editor-field">
+                        <label>Timeout:</label>
+                        <input type="number" value="${step.timeout || 10}" onchange="updateStepTimeout('${step.id}', this.value); event.stopPropagation();" min="1" max="60"> s
+                    </div>
+                `;
+            }
+            if (step.action === 'wait') {
+                return `
+                    <div class="editor-field">
+                        <label>Duration:</label>
+                        <input type="number" value="${step.duration || 1000}" onchange="updateStepDuration('${step.id}', this.value); event.stopPropagation();" min="100" step="100"> ms
+                    </div>
+                `;
+            }
+            return '';
+        }
+
+        function setActiveStep(stepId) {
+            activeStepId = stepId;
+            document.querySelectorAll('.step-card').forEach(card => {
+                card.classList.toggle('active', card.dataset.id === stepId);
+            });
+        }
+
+        // Step Editing Functions
+        function moveStep(stepId, direction) {
+            const index = steps.findIndex(s => s.id === stepId);
+            const newIndex = index + direction;
+            if (newIndex < 0 || newIndex >= steps.length) return;
+
+            [steps[index], steps[newIndex]] = [steps[newIndex], steps[index]];
+            renderSteps();
+        }
+
+        function deleteStep(stepId) {
+            if (!confirm('Delete this step?')) return;
+            steps = steps.filter(s => s.id !== stepId);
+            renderSteps();
+        }
+
+        function updateStepTarget(stepId, value) {
+            const step = steps.find(s => s.id === stepId);
+            if (step) {
+                if (!step.target) step.target = {};
+                step.target.text = value;
+            }
+        }
+
+        function updateStepWait(stepId, value) {
+            const step = steps.find(s => s.id === stepId);
+            if (step) step.waitAfter = parseInt(value) || 0;
+        }
+
+        function updateStepDescription(stepId, value) {
+            const step = steps.find(s => s.id === stepId);
+            if (step) step.description = value;
+        }
+
+        function updateStepTimeout(stepId, value) {
+            const step = steps.find(s => s.id === stepId);
+            if (step) step.timeout = parseInt(value) || 10;
+        }
+
+        function updateStepDuration(stepId, value) {
+            const step = steps.find(s => s.id === stepId);
+            if (step) step.duration = parseInt(value) || 1000;
+        }
+
+        // Suggestion Functions
+        function acceptSuggestion(stepId) {
+            const stepIndex = steps.findIndex(s => s.id === stepId);
+            const step = steps[stepIndex];
+            if (!step || !step.suggestedVerification) return;
+
+            const newStep = {
+                id: 'verify_' + Date.now(),
+                action: 'verify_screen',
+                description: step.suggestedVerification,
+                timestamp: step.timestamp
+            };
+
+            steps.splice(stepIndex + 1, 0, newStep);
+            step.verificationAdded = true;
+            renderSteps();
+        }
+
+        function editSuggestion(stepId) {
+            const step = steps.find(s => s.id === stepId);
+            if (!step) return;
+
+            const newDesc = prompt('Edit verification:', step.suggestedVerification);
+            if (newDesc !== null) {
+                step.suggestedVerification = newDesc;
+                acceptSuggestion(stepId);
+            }
+        }
+
+        function skipSuggestion(stepId) {
+            const step = steps.find(s => s.id === stepId);
+            if (step) {
+                step.verificationAdded = true;
+                renderSteps();
+            }
+        }
+
+        // Add Step Functions
+        function addStep(type) {
+            const video = document.getElementById('video');
+            const timestamp = video.currentTime;
+
+            let newStep;
+            if (type === 'verify_screen') {
+                const desc = prompt('What should the screen show?');
+                if (!desc) return;
+                newStep = { id: 'verify_' + Date.now(), action: 'verify_screen', description: desc, timestamp };
+            } else if (type === 'wait_for') {
+                const element = prompt('What element to wait for?');
+                if (!element) return;
+                newStep = { id: 'wait_for_' + Date.now(), action: 'wait_for', target: { text: element }, timeout: 10, timestamp };
+            } else if (type === 'wait') {
+                const duration = prompt('Wait duration in milliseconds:', '1000');
+                if (!duration) return;
+                newStep = { id: 'wait_' + Date.now(), action: 'wait', duration: parseInt(duration), timestamp };
+            }
+
+            // Insert at correct position based on timestamp
+            const insertIndex = steps.findIndex(s => s.timestamp > timestamp);
+            if (insertIndex === -1) {
+                steps.push(newStep);
+            } else {
+                steps.splice(insertIndex, 0, newStep);
+            }
+            renderSteps();
+        }
+
+        // Export Functions
+        function exportYAML() {
+            const yaml = generateYAML();
+            downloadFile(testData.testName + '.yaml', yaml);
+        }
+
+        function generateYAML() {
+            let yaml = `config:\n  app: ${testData.appPackage}\n\ntests:\n  - name: ${testData.testName}\n    steps:\n`;
+
+            for (const step of steps) {
+                yaml += stepToYAML(step);
+            }
+
+            return yaml;
+        }
+
+        function stepToYAML(step) {
+            let yaml = '';
+
+            if (step.action === 'tap') {
+                const target = step.target?.text || `[${step.target?.x}, ${step.target?.y}]`;
+                yaml = `      - tap: "${target}"\n`;
+                if (step.waitAfter > 0) {
+                    yaml += `      - wait: ${step.waitAfter}ms\n`;
+                }
+            } else if (step.action === 'verify_screen') {
+                yaml = `      - verify_screen: "${step.description}"\n`;
+            } else if (step.action === 'wait_for') {
+                yaml = `      - wait_for: "${step.target?.text}"\n`;
+            } else if (step.action === 'wait') {
+                yaml = `      - wait: ${step.duration}ms\n`;
+            }
+
+            return yaml;
+        }
+
+        function downloadFile(filename, content) {
+            const blob = new Blob([content], { type: 'text/yaml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function discardTest() {
+            if (confirm('Discard this test recording? This cannot be undone.')) {
+                window.close();
+            }
+        }
+
+        // Image Modal (simple version)
+        function openModal(src) {
+            const img = new Image();
+            img.src = src;
+            img.style.cssText = 'max-width: 90vw; max-height: 90vh; border-radius: 8px;';
+
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; z-index: 9999; cursor: pointer;';
+            overlay.appendChild(img);
+            overlay.onclick = () => overlay.remove();
+            document.body.appendChild(overlay);
+        }
     </script>
 </body>
 </html>
