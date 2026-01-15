@@ -1,7 +1,7 @@
 ---
 name: create
 description: Generate Compose code from design input (screenshot/Figma/clipboard) through four-phase workflow with Paparazzi and device validation
-argument-hint: --input <path|url> --name <ComponentName> --type <component|screen> [--clipboard] [--batch] [--device <device-id>]
+argument-hint: --input <path|url> --name <ComponentName> --type <component|screen> [--output <dir>] [--clipboard] [--batch] [--device <device-id>]
 allowed-tools:
   - Read
   - Write
@@ -97,6 +97,10 @@ Check required arguments:
 - `--type` must be "component" or "screen"
 - If `--batch`: `--input` must be directory
 - If `--clipboard`: ignore `--input` argument
+- `--output` (optional): Override default output directory for this run
+  - If provided, use this path instead of `config.output.default_output_dir`
+  - Path can be relative or absolute
+  - Directory will be created if it doesn't exist
 
 Exit with clear error if validation fails.
 
@@ -263,6 +267,23 @@ Mark "Preprocess baseline (Phase 1.5)" as completed, start "Generate initial Com
 
 ### Phase 2: Code Generation (design-generator agent)
 
+**Determine output file path:**
+
+```bash
+# Check for --output override
+if [ -n "$output_override" ]; then
+  output_dir="$output_override"
+else
+  output_dir="${config.output.default_output_dir}"
+fi
+
+# Create directory if needed
+mkdir -p "$output_dir"
+
+# Build full path
+output_file_path="$output_dir/${name}${suffix}.kt"
+```
+
 **Step 1: Invoke design-generator agent**
 
 Use Task tool to launch agent:
@@ -276,7 +297,7 @@ Task tool:
 
   Config:
   - Package: {config.output.package_base}
-  - Output dir: {config.output.default_output_dir}
+  - Output dir: {output_dir}
   - Component suffix: {config.naming.component_suffix}
   - Screen suffix: {config.naming.screen_suffix}
   - Extract theme: {config.output.extract_theme_from_existing}
