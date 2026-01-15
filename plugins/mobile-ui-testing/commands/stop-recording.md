@@ -37,6 +37,10 @@ Start a new recording with:
 - `{VIDEO_START_TIME}` = videoStartTime
 - `{VIDEO_PID}` = videoPid
 - `{TOUCH_PID}` = touchPid
+- `{RECORDING_TYPE}` = type (default: "test" if not present)
+- `{PRECONDITION_NAME}` = preconditionName (if type is "precondition")
+- `{PRECONDITION_DESCRIPTION}` = preconditionDescription (if type is "precondition")
+- `{PRECONDITION_FOLDER}` = preconditionFolder (if type is "precondition")
 
 ### Step 2: Stop Screenrecord on Device (CRITICAL)
 
@@ -214,6 +218,14 @@ Create the analysis data structure combining all step analyses:
 
 Write the complete analysis data as JSON.
 
+#### Step 8.4.5: Branch by Recording Type
+
+**If `{RECORDING_TYPE}` is "precondition":**
+- Go to Step 8.7 (Generate Precondition YAML)
+
+**Otherwise:**
+- Continue to Step 8.5 (Generate Approval UI)
+
 #### Step 8.5: Generate Approval UI
 
 **Tool:** `Bash`
@@ -235,6 +247,122 @@ open "{TEST_FOLDER}/approval.html"
 ```
 
 **Note:** On Linux, use `xdg-open` instead of `open`.
+
+#### Step 8.7: Generate Precondition YAML (for precondition recordings only)
+
+**This step only runs if `{RECORDING_TYPE}` is "precondition".**
+
+**Tool:** `AskUserQuestion`
+```
+Question: "How should the runtime verify this precondition is active?"
+Options:
+- Check for element (fast)
+- Check screen state (AI vision)
+```
+
+**If "Check for element":**
+
+**Tool:** `AskUserQuestion`
+```
+Question: "What element text indicates this state is active?"
+```
+Store response as `{VERIFY_ELEMENT}`.
+
+**If "Check screen state":**
+
+**Tool:** `AskUserQuestion`
+```
+Question: "Describe the screen when this state is active"
+```
+Store response as `{VERIFY_SCREEN}`.
+
+**Generate precondition YAML:**
+
+Build `{GENERATED_STEPS}` from touch events and typing sequences:
+- For each touch event, check the analysis data
+- If analysis identifies the tapped element: `- tap: "element text"`
+- Otherwise use coordinates: `- tap: [x, y]`
+- For detected typing sequences: `- type: "text"`
+- For long pauses (> 2s): `- wait: Xs`
+
+**Tool:** `Write` to `{PRECONDITION_FOLDER}/precondition.yaml`
+
+If verification is by element:
+```yaml
+name: {PRECONDITION_NAME}
+description: "{PRECONDITION_DESCRIPTION}"
+
+steps:
+{GENERATED_STEPS}
+
+verify:
+  element: "{VERIFY_ELEMENT}"
+```
+
+If verification is by screen:
+```yaml
+name: {PRECONDITION_NAME}
+description: "{PRECONDITION_DESCRIPTION}"
+
+steps:
+{GENERATED_STEPS}
+
+verify:
+  screen: "{VERIFY_SCREEN}"
+```
+
+**Copy precondition to standard location:**
+
+**Tool:** `Bash`
+```bash
+mkdir -p tests/preconditions && cp "{PRECONDITION_FOLDER}/precondition.yaml" "tests/preconditions/{PRECONDITION_NAME}.yaml"
+```
+
+#### Step 8.8: Output Precondition Results (for precondition recordings only)
+
+**This step only runs if `{RECORDING_TYPE}` is "precondition".**
+
+Count steps from generated YAML as `{STEP_COUNT}`.
+
+Output to user:
+
+```
+Precondition Created: {PRECONDITION_NAME}
+══════════════════════════════════════════════════════════
+
+Description: {PRECONDITION_DESCRIPTION}
+Steps recorded: {STEP_COUNT}
+Saved to: tests/preconditions/{PRECONDITION_NAME}.yaml
+
+Usage in test files:
+─────────────────────
+config:
+  app: com.example.app
+  precondition: {PRECONDITION_NAME}
+
+Conditional check:
+──────────────────
+- if_precondition: {PRECONDITION_NAME}
+  then:
+    - tap: "Premium Feature"
+
+══════════════════════════════════════════════════════════
+```
+
+**Update recording state and skip to end:**
+
+**Tool:** `Write` to `.claude/recording-state.json`
+
+```json
+{
+  "status": "completed",
+  "type": "precondition",
+  "preconditionName": "{PRECONDITION_NAME}",
+  "preconditionFile": "tests/preconditions/{PRECONDITION_NAME}.yaml"
+}
+```
+
+**Stop here for precondition recordings** - do not continue to Step 9 or 10.
 
 ### Step 9: Update Recording State
 
