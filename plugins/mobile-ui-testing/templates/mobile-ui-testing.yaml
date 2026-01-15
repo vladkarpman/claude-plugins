@@ -5,26 +5,13 @@
 # Default: opus
 model: opus
 
-# Screenshot buffer capture interval in milliseconds
-# Lower = more screenshots, higher disk usage
-# Default: 150
-buffer_interval_ms: 150
-
-# Maximum screenshots in rolling buffer
-# Default: 200 (~30 seconds at 150ms)
-buffer_max_screenshots: 200
-
-# Verification recency threshold in milliseconds
-# Screenshots must be within this time OR be most recent
-# Default: 500
-verification_recency_ms: 500
-
 # Report generation (default: true)
 # Set to false to disable automatic report generation
 generate_reports: true
 
-# Screenshot capture mode for reports
-# - all: Capture after every step (default)
-# - failures: Only capture on failed steps
-# - none: No screenshots in reports
-screenshots: all
+# Frame extraction settings
+# Frames are extracted from video recording after test completion
+
+# Number of parallel ffmpeg workers for frame extraction
+# Default: auto (based on CPU cores)
+# frame_extraction_workers: 32

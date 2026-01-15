@@ -1,7 +1,7 @@
 {
   "name": "mobile-ui-testing",
-  "version": "4.0.1",
-  "description": "YAML-based mobile UI testing with scrcpy 3.x acceleration, conditional logic, and AI-powered verification",
+  "version": "4.1.0",
+  "description": "YAML-based mobile UI testing with video-based frame capture, conditional logic, and AI-powered verification",
   "author": {
     "name": "Vladislav Karpman",
     "url": "https://github.com/vladkarpman"

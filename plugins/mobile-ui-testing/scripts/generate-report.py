@@ -276,20 +276,29 @@ def enrich_data(data: Dict[str, Any]) -> Dict[str, Any]:
             # Detect verification steps (show single animation, not before/after)
             step["isVerification"] = action.startswith("verify_")
 
-            # Handle new frame-based screenshots (before/after animation)
+            # Handle new frame-based screenshots (before/exact/after animation)
             frames_before = step.get("frames_before", [])
+            frame_exact = step.get("frame_exact")
             frames_after = step.get("frames_after", [])
 
-            if frames_before or frames_after:
+            if frames_before or frame_exact or frames_after:
                 step["hasFrames"] = True
 
                 # Get last before frame for the action overlay
                 if frames_before:
                     step["lastBeforeFrame"] = frames_before[-1]
 
+                # Store exact frame if available
+                if frame_exact:
+                    step["exactFrame"] = frame_exact
+
                 # For verification steps: combine all frames into single animation
                 if step["isVerification"]:
-                    step["allFrames"] = frames_before + frames_after
+                    all_frames = frames_before.copy()
+                    if frame_exact:
+                        all_frames.append(frame_exact)
+                    all_frames.extend(frames_after)
+                    step["allFrames"] = all_frames
 
             # Handle tap coordinates from action_x/action_y (new format)
             action_x = step.get("action_x")

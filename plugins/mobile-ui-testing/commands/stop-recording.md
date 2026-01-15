@@ -118,7 +118,10 @@ python3 ./scripts/extract-frames.py {TEST_FOLDER}/recording/recording.mp4 {TEST_
 
 **If video was corrupted:** Skip this step, use coordinates only.
 
-**If successful:** Frames are saved to `{TEST_FOLDER}/recording/screenshots/touch_NNN.png`
+**If successful:** Frames are saved to `{TEST_FOLDER}/recording/screenshots/`:
+- `step_NNN_before_1.png` to `step_NNN_before_3.png` (300ms, 200ms, 100ms before action)
+- `step_NNN_exact.png` (at action moment)
+- `step_NNN_after_1.png` to `step_NNN_after_3.png` (100ms, 200ms, 300ms after action)
 
 ### Step 8: Analyze Steps and Generate Approval UI
 

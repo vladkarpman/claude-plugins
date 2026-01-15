@@ -8,7 +8,7 @@ A Claude Code plugin for writing and running YAML-based mobile UI tests with [mo
 ## Features
 
 - **Auto-permissions** - mobile-mcp tools auto-approved, no manual confirmation needed
-- **scrcpy 3.x acceleration** - ~45 FPS capture with ~10ms input latency (optional)
+- **Video-based frame capture** - Records video, extracts 7 frames per action in parallel
 - **`/run-test`** - Execute YAML test files with detailed output and HTML reports
 - **`/create-test`** - Scaffold new test files with proper structure
 - **`/generate-test`** - Generate tests from natural language descriptions
@@ -34,7 +34,7 @@ Before using this plugin, ensure you have:
    - Android: Device connected via `adb` (run `adb devices` to verify)
    - iOS: Simulator running or device connected
 
-4. **ffmpeg** (required for `/record-test` feature)
+4. **ffmpeg** (required for video recording and frame extraction)
    ```bash
    # macOS
    brew install ffmpeg
@@ -45,10 +45,6 @@ Before using this plugin, ensure you have:
    # Windows
    choco install ffmpeg
    ```
-
-5. **scrcpy 3.x** (optional, for accelerated screenshots/input)
-   - Install from [scrcpy releases](https://github.com/Genymobile/scrcpy/releases)
-   - Version 3.0+ required for MYScrcpy compatibility
 
 ## Installation
 
@@ -110,29 +106,6 @@ pip install -r scripts/requirements.txt
 - `imagehash>=4.3.0` - Perceptual hashing for checkpoint detection
 
 **Note:** These are only needed for the verification interview feature during `/stop-recording`. Basic test creation and execution work without these dependencies.
-
-### scrcpy-helper (Optional)
-
-For ~45 FPS screenshots and ~10ms input latency (vs ~500ms with mobile-mcp alone), install scrcpy-helper:
-
-**Requirements:**
-- Python 3.11+ (MYScrcpy requirement)
-- scrcpy 3.x installed
-- Android device only (iOS not supported)
-
-**Setup:**
-```bash
-cd scripts/scrcpy_helper
-python3.12 -m venv .venv
-.venv/bin/pip install mysc Pillow imagehash numpy adbutils
-```
-
-**Verify installation:**
-```bash
-.venv/bin/python -c "from myscrcpy.core import Session; print('MYScrcpy ready')"
-```
-
-scrcpy-helper starts automatically on session start if the venv is configured. Falls back to mobile-mcp gracefully if unavailable.
 
 ## Quick Start
 
@@ -272,7 +245,7 @@ Stop recording and generate YAML from captured actions.
 
 **Processing steps:**
 1. Stops video and touch capture
-2. Extracts frames from video at each touch timestamp (100ms before touch)
+2. Extracts 7 frames per action from video in parallel (3 before, 1 exact, 3 after)
 3. **Detects keyboard typing sequences** using position and timing heuristics
 4. **Typing interview** - Asks what you typed in each detected sequence
 5. **Verification interview** (optional) - Add checkpoints to validate app behavior
@@ -388,6 +361,14 @@ tests/
         ├── verifications.json     # User-selected checkpoints
         ├── recording.mp4          # Video recording
         └── screenshots/           # Extracted frames from video
+            ├── step_001_before_1.png  # 300ms before action
+            ├── step_001_before_2.png  # 200ms before action
+            ├── step_001_before_3.png  # 100ms before action
+            ├── step_001_exact.png     # At action moment
+            ├── step_001_after_1.png   # 100ms after action
+            ├── step_001_after_2.png   # 200ms after action
+            ├── step_001_after_3.png   # 300ms after action
+            └── ...
 ```
 
 Note: The `tests/` folder is gitignored - test artifacts are local only.
@@ -412,7 +393,12 @@ Note: The `tests/` folder is gitignored - test artifacts are local only.
 > Generated tests/login-flow/test.yaml
 ```
 
-**Key feature:** Screenshots are extracted 100ms BEFORE each touch, showing the UI state at the moment you decided to tap - enabling accurate element identification.
+**Key feature:** Frames are extracted from video for each action:
+- 3 frames BEFORE (300ms, 200ms, 100ms before action)
+- 1 exact frame (at action moment)
+- 3 frames AFTER (100ms, 200ms, 300ms after action)
+
+This enables accurate element identification and shows the UI response to each action.
 
 ### Running Folder-Format Tests
 

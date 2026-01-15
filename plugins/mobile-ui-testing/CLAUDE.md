@@ -20,9 +20,24 @@ No build/compile step - pure markdown commands.
 
 ## Dependencies
 
-### screen-buffer-mcp (Fast Screenshots)
+### ffmpeg (Required for Frame Extraction)
 
-For high-performance screenshots (~50ms vs ~500ms with mobile-mcp):
+Used to extract frames from video recordings:
+
+```bash
+# macOS
+brew install ffmpeg
+
+# Ubuntu/Debian
+sudo apt install ffmpeg
+
+# Windows
+choco install ffmpeg
+```
+
+### screen-buffer-mcp (For Verification Only)
+
+Used only for real-time screenshot verification (`verify_screen`, `if_screen`):
 
 ```bash
 # Install uv (Python package runner, like npx for Python)
@@ -31,12 +46,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Restart Claude Code after installation
 ```
 
-The plugin uses screen-buffer-mcp via `uvx` for fast screenshots. Falls back to mobile-mcp if unavailable.
-
-**Benefits of screen-buffer-mcp:**
-- **~50ms** screenshot latency (vs 500-2000ms with mobile-mcp)
-- **Frame buffer** - access previous frames for analysis
-- **No bundled dependencies** - runs via uvx on demand
+**Note:** The plugin primarily uses video recording with parallel frame extraction. screen-buffer-mcp is only used for verification actions that require immediate visual analysis.
 
 ### Python Dependencies (Optional)
 
@@ -109,30 +119,46 @@ agents/               # Specialized subagents for advanced workflows
 
 **Key processing flow:**
 ```
-User Action → Command (markdown) → screen-buffer tool (screenshots) → Device
-                                 → mobile-mcp tool (all other ops)  → Device
-           ↓
-    AskUserQuestion (for interviews)
-           ↓
-    Write YAML test file
+Test Execution:
+  Start video recording → Execute steps → Stop recording → Extract frames → Generate report
+
+Recording:
+  Start video + touch monitor → User interacts → Stop → Extract frames → Generate approval UI
+
+Verification (verify_screen, if_screen):
+  screen-buffer tool (real-time screenshot) → AI analysis → Pass/Fail
 ```
 
 ## MCP Server Architecture
 
-The plugin uses two MCP servers for device interaction:
+The plugin uses MCP servers for device interaction and video recording with ffmpeg for frame capture.
 
-### screen-buffer-mcp (Fast Screenshots)
+### Video Recording + Frame Extraction (Primary)
 
-High-performance screenshots via scrcpy buffer. Runs via `uvx` (requires `uv` installed).
+The plugin records video during test execution and recording sessions, then extracts frames in parallel using ffmpeg.
 
-**Tools provided:**
+**Flow:**
+1. Video recording starts via `adb screenrecord`
+2. Test steps execute (no screenshot overhead)
+3. Video stops and is pulled from device
+4. `extract-frames.py` extracts 7 frames per step in parallel:
+   - 3 before frames (300ms, 200ms, 100ms before action)
+   - 1 exact frame (at action moment)
+   - 3 after frames (100ms, 200ms, 300ms after action)
+
+**Benefits:**
+- No runtime overhead during test execution
+- Parallel frame extraction (10+ frames/sec with 32 workers)
+- More frames per step (7 vs 6 in screenshot mode)
+
+### screen-buffer-mcp (Verification Only)
+
+Used only for real-time verification actions (`verify_screen`, `if_screen`) that need immediate visual analysis.
+
+**Tools used:**
 | Tool | Description |
 |------|-------------|
-| `device_screenshot` | Take screenshot (~50ms) |
-| `device_get_frame` | Get frame from buffer at offset |
-| `device_list` | List connected devices |
-| `device_screen_size` | Get screen dimensions |
-| `device_backend_status` | Check scrcpy connection status |
+| `device_screenshot` | Take screenshot for verification (~50ms) |
 
 **Configuration** (`.mcp.json`):
 ```json
@@ -455,16 +481,23 @@ Reports are enabled by default. Use `--no-report` flag to skip.
 tests/reports/{YYYY-MM-DD}_{test-name}/
 ├── report.json          # Source of truth (JSON)
 ├── report.html          # Generated view (HTML)
-└── screenshots/
-    ├── step_001.png
-    ├── step_002.png
+├── recording/           # Video and step timestamps
+│   ├── recording.mp4
+│   └── step_timestamps.json
+└── screenshots/         # Frames extracted from video
+    ├── step_001_before_1.png
+    ├── step_001_before_2.png
+    ├── step_001_before_3.png
+    ├── step_001_exact.png
+    ├── step_001_after_1.png
+    ├── step_001_after_2.png
+    ├── step_001_after_3.png
     └── ...
 ```
 
 **Configuration** (in `.claude/mobile-ui-testing.yaml`):
 ```yaml
 generate_reports: true    # Default: true
-screenshots: all          # all | failures | none
 ```
 
 **Manual report generation:**
@@ -489,7 +522,6 @@ python3 scripts/generate-report.py tests/reports/{name}/report.json
 ```yaml
 model: opus              # AI model: opus, sonnet, haiku
 generate_reports: true   # Generate HTML reports (default: true)
-screenshots: all         # Screenshot mode: all | failures | none
 ```
 
 See `templates/mobile-ui-testing.yaml` for all options.
@@ -582,7 +614,7 @@ Generates comprehensive test suites by exploring app structure.
 - Creating tests for login, dashboard, settings, etc. simultaneously
 
 **Capabilities:**
-- App structure analysis via screenshots and element listing
+- App structure analysis via element listing
 - Navigation mapping and screen hierarchy documentation
 - Feature identification (login, search, cart, settings)
 - Multiple YAML test file generation with proper structure
@@ -595,12 +627,11 @@ Generates comprehensive test suites by exploring app structure.
 - "Generate tests covering all main features and edge cases"
 
 **Process:**
-1. Takes screenshots to understand current app state
-2. Lists elements on screen using mobile-mcp
-3. Maps navigation flows by exploring screens
-4. Identifies distinct features/modules
-5. Generates separate test files for each feature
-6. Includes setup/teardown, verifications, and conditional logic
+1. Lists elements on screen using mobile-mcp
+2. Maps navigation flows by exploring screens
+3. Identifies distinct features/modules
+4. Generates separate test files for each feature
+5. Includes setup/teardown, verifications, and conditional logic
 
 ### yaml-test-validator
 

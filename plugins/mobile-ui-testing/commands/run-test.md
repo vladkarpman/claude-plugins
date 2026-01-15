@@ -7,9 +7,8 @@ allowed-tools:
   - Write
   - Bash
   - Glob
-  # screen-buffer-mcp (fast screenshots + frame buffer)
+  # screen-buffer-mcp (screenshots for verification only)
   - mcp__screen-buffer__device_screenshot
-  - mcp__screen-buffer__device_get_frame
   # mobile-mcp (all device operations)
   - mcp__mobile-mcp__mobile_list_available_devices
   - mcp__mobile-mcp__mobile_get_screen_size
@@ -102,7 +101,6 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/load-config.py" --test-config "{TEST_FILE
 Parse JSON output. Store:
 - `{CONFIG_MODEL}` = model (default: opus)
 - `{GENERATE_REPORTS}` = generate_reports (default: true)
-- `{SCREENSHOT_MODE}` = screenshots (default: "all") - options: all, failures, none
 
 **Determine if reports should be generated:**
 - `{SHOULD_GENERATE_REPORT}` = `{GENERATE_REPORTS}` AND NOT `{SKIP_REPORT}`
@@ -112,12 +110,32 @@ Parse JSON output. Store:
 Create report directory structure:
 ```
 {REPORT_DIR} = tests/reports/{YYYY-MM-DD}_{TEST_NAME}/
+{REPORT_DIR}/recording/
 {REPORT_DIR}/screenshots/
 ```
 
-**Tool:** `Bash` to create directories:
+**Tool:** `Bash` to create directories and get video start timestamp:
 ```bash
-mkdir -p "{REPORT_DIR}/screenshots"
+mkdir -p "{REPORT_DIR}/recording" "{REPORT_DIR}/screenshots"
+python3 -c "import time; print(time.time())"
+```
+
+Store the timestamp output as `{VIDEO_START_TIME}` (e.g., `1768233811.7967029`).
+
+**Start video recording in background:**
+
+**Tool:** `Bash` with `run_in_background: true`
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/record-video.sh" "{DEVICE_ID}" "{REPORT_DIR}/recording/recording.mp4" &
+echo "VIDEO_PID=$!"
+```
+
+Read the background task output file to get `VIDEO_PID=XXXXX`.
+Store the number as `{VIDEO_PID}`.
+
+Initialize step timestamp tracking:
+```
+{STEP_TIMESTAMPS} = []  # Array to track when each action was performed
 ```
 
 Initialize report data:
@@ -227,57 +245,37 @@ For each test in `{TESTS}`:
    - `{STEP_COUNTER}` += 1
    - Output: `  [{STEP_COUNTER}/{total}] {action}`
 
-   **Capture BEFORE frames (if reporting enabled and `{SCREENSHOT_MODE}` = "all"):**
+   **Track step timestamp (if reporting enabled):**
 
-   Capture 3 frames from screen-buffer showing UI state leading up to action:
-   ```bash
-   {REPORT_DIR}/screenshots/step_{STEP_COUNTER:03d}_before_1.png  # oldest (offset=2)
-   {REPORT_DIR}/screenshots/step_{STEP_COUNTER:03d}_before_2.png  # middle (offset=1)
-   {REPORT_DIR}/screenshots/step_{STEP_COUNTER:03d}_before_3.png  # newest (offset=0)
+   Get current timestamp before executing action:
    ```
-   **Tool:** `mcp__screen-buffer__device_get_frame` with offset=2, 1, 0
-
-   Note: screen-buffer maintains rolling buffer of last 10 frames. Frames are ~100ms apart.
+   {STEP_TIMESTAMP} = current Unix timestamp (e.g., time.time() in Python)
+   ```
 
    - **Execute action** (tap, swipe, type, etc.)
    - Store result: `{STEP_RESULT}` = success message or error
    - Store tap/swipe coordinates: `{ACTION_X}`, `{ACTION_Y}` (if applicable)
    - `{STEP_STATUS}` = "passed" or "failed"
 
-   **Capture AFTER frames (if reporting enabled):**
-   - **If `{SCREENSHOT_MODE}` = "all":** Capture 3 frames with 100ms delays
-   - **If `{SCREENSHOT_MODE}` = "failures":** Only if `{STEP_STATUS}` = "failed"
-   - **If `{SCREENSHOT_MODE}` = "none":** Skip
-
-   Capture 3 frames showing UI response after action:
-   ```bash
-   {REPORT_DIR}/screenshots/step_{STEP_COUNTER:03d}_after_1.png  # immediate
-   # wait 100ms
-   {REPORT_DIR}/screenshots/step_{STEP_COUNTER:03d}_after_2.png  # +100ms
-   # wait 100ms
-   {REPORT_DIR}/screenshots/step_{STEP_COUNTER:03d}_after_3.png  # +200ms (final state)
+   **Record step data (frames will be extracted from video later):**
    ```
-   **Tool:** `mcp__screen-buffer__device_screenshot` (fast, ~50ms each)
+   {STEP_TIMESTAMPS}.push({
+     index: {STEP_COUNTER},
+     timestamp: {STEP_TIMESTAMP},
+     gesture: "{action type: tap, swipe, etc.}",
+     x: {ACTION_X},
+     y: {ACTION_Y}
+   })
 
-   **Record step in report:**
-   ```
    {CURRENT_TEST}.steps.push({
      number: {STEP_COUNTER},
      action: "{action description}",
      status: "{STEP_STATUS}",
      result: "{STEP_RESULT}",
-     // Before frames (animation leading to action)
-     frames_before: [
-       "screenshots/step_{STEP_COUNTER:03d}_before_1.png",
-       "screenshots/step_{STEP_COUNTER:03d}_before_2.png",
-       "screenshots/step_{STEP_COUNTER:03d}_before_3.png"
-     ],
-     // After frames (animation showing UI response)
-     frames_after: [
-       "screenshots/step_{STEP_COUNTER:03d}_after_1.png",
-       "screenshots/step_{STEP_COUNTER:03d}_after_2.png",
-       "screenshots/step_{STEP_COUNTER:03d}_after_3.png"
-     ],
+     timestamp: {STEP_TIMESTAMP},
+     // Frames will be populated after video extraction
+     frames_before: [],
+     frames_after: [],
      // Tap/swipe coordinates for overlay indicator
      action_x: {ACTION_X},  // null if not tap/swipe
      action_y: {ACTION_Y}   // null if not tap/swipe
@@ -339,7 +337,65 @@ For each step in `{TEARDOWN_STEPS}`:
 
 **If `{SHOULD_GENERATE_REPORT}` is true:**
 
-1. **Finalize report data:**
+1. **Stop video recording:**
+
+   **Tool:** `Bash`
+   ```bash
+   # Send SIGINT to screenrecord - this writes the moov atom and finalizes the file
+   adb -s "{DEVICE_ID}" shell pkill -2 screenrecord
+   ```
+
+   **Wait for video script to complete:**
+   ```bash
+   # Wait for recording script to finish (pulls video from device)
+   for i in {1..30}; do
+       kill -0 {VIDEO_PID} 2>/dev/null || break
+       sleep 1
+   done
+   echo "Video script completed"
+   ```
+
+2. **Write step timestamps for frame extraction:**
+
+   **Tool:** `Write` to `{REPORT_DIR}/recording/step_timestamps.json`
+   Content: `{STEP_TIMESTAMPS}` as JSON array
+
+3. **Extract frames from video:**
+
+   **Tool:** `Bash`
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/extract-frames.py" \
+     "{REPORT_DIR}/recording/recording.mp4" \
+     "{REPORT_DIR}/recording/step_timestamps.json" \
+     "{VIDEO_START_TIME}" \
+     "{REPORT_DIR}/screenshots"
+   ```
+
+   This extracts 7 frames per step in parallel:
+   - `step_NNN_before_1.png` to `step_NNN_before_3.png` (300ms, 200ms, 100ms before action)
+   - `step_NNN_exact.png` (at action moment)
+   - `step_NNN_after_1.png` to `step_NNN_after_3.png` (100ms, 200ms, 300ms after action)
+
+4. **Update report data with frame paths:**
+
+   For each test in `{REPORT_DATA}.tests`:
+     For each step in test.steps:
+       ```
+       step_num = step.number formatted as 3 digits (e.g., "001")
+       step.frames_before = [
+         "screenshots/step_{step_num}_before_1.png",
+         "screenshots/step_{step_num}_before_2.png",
+         "screenshots/step_{step_num}_before_3.png"
+       ]
+       step.frame_exact = "screenshots/step_{step_num}_exact.png"
+       step.frames_after = [
+         "screenshots/step_{step_num}_after_1.png",
+         "screenshots/step_{step_num}_after_2.png",
+         "screenshots/step_{step_num}_after_3.png"
+       ]
+       ```
+
+5. **Finalize report data:**
    ```
    {REPORT_DATA}.ended_at = ISO timestamp
    {REPORT_DATA}.status = "completed"
@@ -351,22 +407,22 @@ For each step in `{TEARDOWN_STEPS}`:
    }
    ```
 
-2. **Write JSON report:**
+6. **Write JSON report:**
    **Tool:** `Write` to `{REPORT_DIR}/report.json`
    Content: `{REPORT_DATA}` as JSON
 
-3. **Generate HTML report:**
+7. **Generate HTML report:**
    **Tool:** `Bash`
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/generate-report.py" "{REPORT_DIR}/report.json"
    ```
 
-4. **Output report location:**
+8. **Output report location:**
    ```
    📊 Report: {REPORT_DIR}/report.html
    ```
 
-5. **Open report in browser (optional):**
+9. **Open report in browser (optional):**
    ```bash
    open "{REPORT_DIR}/report.html"
    ```
@@ -375,11 +431,18 @@ For each step in `{TEARDOWN_STEPS}`:
 
 **Tool Architecture:**
 
-- **screen-buffer-mcp:** Screenshots only (fast ~50ms via scrcpy buffer)
-- **mobile-mcp:** All other device operations
+- **Video recording:** Screen is recorded during entire test execution, frames extracted afterwards in parallel
+- **screen-buffer-mcp:** Used only for verification actions (verify_screen, if_screen) that need immediate visual analysis
+- **mobile-mcp:** All device interaction operations
 
-**Screen-Buffer Tools:**
-- `mcp__screen-buffer__device_screenshot` - Fast screenshot (~50ms)
+**Video-Based Frame Extraction:**
+- No screenshots taken during test execution (no runtime overhead)
+- Video recording runs continuously in background
+- After all steps complete, frames extracted in parallel using ffmpeg
+- 7 frames per step: 3 before, 1 exact, 3 after (100ms intervals)
+
+**Screen-Buffer Tools (verification only):**
+- `mcp__screen-buffer__device_screenshot` - Used only for verify_screen and if_screen
 
 **Mobile-MCP Tools:**
 - `mcp__mobile-mcp__mobile_click_on_screen_at_coordinates` - Tap
@@ -645,15 +708,15 @@ Screen-based check:
 ## Error Handling
 
 On step failure:
-1. Take screenshot: `failure_{step_num}.png`
-2. List all elements on screen
-3. Show error with:
+1. List all elements on screen
+2. Show error with:
    - What was expected
    - What was found
    - Suggestion if similar element exists
-4. Mark test as failed
-5. Continue to next test (don't abort suite)
-6. Always run teardown
+3. Mark test as failed
+4. Continue to next test (don't abort suite)
+5. Always run teardown
+6. Frames from video recording will capture the failure state
 
 ## Output Format
 
@@ -668,11 +731,11 @@ On step failure:
   [4/8] tap "Submit"
         ✗ FAILED: Element not found
 
-        Screenshot: tests/login/reports/failure_004.png
-
         Elements on screen:
         - "Send" at (540, 800)
         - "Cancel" at (540, 900)
 
         Hint: Did you mean "Send"?
+
+        See report for failure frames: tests/reports/2026-01-15_login/
 ```

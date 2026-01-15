@@ -23,11 +23,7 @@ except ImportError:
 
 DEFAULTS = {
     "model": "opus",
-    "buffer_interval_ms": 150,
-    "buffer_max_screenshots": 200,
-    "verification_recency_ms": 500,
-    "generate_reports": True,
-    "screenshots": "all"  # all | failures | none
+    "generate_reports": True
 }
 
 
@@ -61,11 +57,7 @@ def extract_test_config(test_yaml: Dict[str, Any]) -> Dict[str, Any]:
     # Only return keys that are configuration, not test-specific like 'app'
     config_keys = [
         "model",
-        "buffer_interval_ms",
-        "buffer_max_screenshots",
-        "verification_recency_ms",
-        "generate_reports",
-        "screenshots"
+        "generate_reports"
     ]
     return {k: v for k, v in config.items() if k in config_keys}
 
