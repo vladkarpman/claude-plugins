@@ -527,6 +527,18 @@
         const testData = {{testDataJSON}};
         let steps = [...testData.steps];
         let activeStepId = null;
+        let stepIdCounter = 0;
+
+        // Utility: Escape HTML to prevent XSS
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
 
         // Initialize on load
         document.addEventListener('DOMContentLoaded', () => {
@@ -541,6 +553,7 @@
             const progress = document.getElementById('progress');
 
             video.addEventListener('timeupdate', () => {
+                if (!isFinite(video.duration) || video.duration === 0) return;
                 const percent = (video.currentTime / video.duration) * 100;
                 progress.style.width = percent + '%';
                 document.getElementById('currentTime').textContent = formatTime(video.currentTime);
@@ -635,10 +648,10 @@
 
         function getStepTargetDisplay(step) {
             if (step.action === 'tap' || step.action === 'wait_for') {
-                return step.target?.text || `(${step.target?.x}, ${step.target?.y})`;
+                return escapeHtml(step.target?.text) || `(${step.target?.x}, ${step.target?.y})`;
             }
             if (step.action === 'verify_screen') {
-                return `"${step.description || ''}"`;
+                return `"${escapeHtml(step.description || '')}"`;
             }
             if (step.action === 'wait') {
                 return `${step.duration || 0}ms`;
@@ -682,9 +695,9 @@
         function renderAnalysis(analysis) {
             return `
                 <div class="step-analysis">
-                    ${analysis.before ? `<div class="analysis-row"><span class="analysis-label">Before:</span><span class="analysis-value">${analysis.before}</span></div>` : ''}
-                    ${analysis.action ? `<div class="analysis-row"><span class="analysis-label">Action:</span><span class="analysis-value">${analysis.action}</span></div>` : ''}
-                    ${analysis.after ? `<div class="analysis-row"><span class="analysis-label">After:</span><span class="analysis-value">${analysis.after}</span></div>` : ''}
+                    ${analysis.before ? `<div class="analysis-row"><span class="analysis-label">Before:</span><span class="analysis-value">${escapeHtml(analysis.before)}</span></div>` : ''}
+                    ${analysis.action ? `<div class="analysis-row"><span class="analysis-label">Action:</span><span class="analysis-value">${escapeHtml(analysis.action)}</span></div>` : ''}
+                    ${analysis.after ? `<div class="analysis-row"><span class="analysis-label">After:</span><span class="analysis-value">${escapeHtml(analysis.after)}</span></div>` : ''}
                 </div>
             `;
         }
@@ -693,7 +706,7 @@
             return `
                 <div class="step-suggestion">
                     <div class="suggestion-header">💡 Suggested verification</div>
-                    <div class="suggestion-text">verify_screen: "${step.suggestedVerification}"</div>
+                    <div class="suggestion-text">verify_screen: "${escapeHtml(step.suggestedVerification)}"</div>
                     <div class="suggestion-actions">
                         <button class="btn btn-primary" onclick="acceptSuggestion('${step.id}'); event.stopPropagation();">+ Add</button>
                         <button class="btn btn-secondary" onclick="editSuggestion('${step.id}'); event.stopPropagation();">Edit</button>
@@ -708,7 +721,7 @@
                 return `
                     <div class="editor-field">
                         <label>Target:</label>
-                        <input type="text" value="${step.target?.text || ''}" onchange="updateStepTarget('${step.id}', this.value); event.stopPropagation();" placeholder="Element text">
+                        <input type="text" value="${escapeHtml(step.target?.text || '')}" onchange="updateStepTarget('${step.id}', this.value); event.stopPropagation();" placeholder="Element text">
                     </div>
                     <div class="editor-field">
                         <label>Wait after:</label>
@@ -720,7 +733,7 @@
                 return `
                     <div class="editor-field" style="flex: 1;">
                         <label>Description:</label>
-                        <input type="text" value="${step.description || ''}" onchange="updateStepDescription('${step.id}', this.value); event.stopPropagation();" style="width: 300px;">
+                        <input type="text" value="${escapeHtml(step.description || '')}" onchange="updateStepDescription('${step.id}', this.value); event.stopPropagation();" style="width: 300px;">
                     </div>
                 `;
             }
@@ -728,7 +741,7 @@
                 return `
                     <div class="editor-field">
                         <label>Element:</label>
-                        <input type="text" value="${step.target?.text || ''}" onchange="updateStepTarget('${step.id}', this.value); event.stopPropagation();">
+                        <input type="text" value="${escapeHtml(step.target?.text || '')}" onchange="updateStepTarget('${step.id}', this.value); event.stopPropagation();">
                     </div>
                     <div class="editor-field">
                         <label>Timeout:</label>
@@ -805,7 +818,7 @@
             if (!step || !step.suggestedVerification) return;
 
             const newStep = {
-                id: 'verify_' + Date.now(),
+                id: 'verify_' + Date.now() + '_' + (++stepIdCounter),
                 action: 'verify_screen',
                 description: step.suggestedVerification,
                 timestamp: step.timestamp
@@ -844,15 +857,15 @@
             if (type === 'verify_screen') {
                 const desc = prompt('What should the screen show?');
                 if (!desc) return;
-                newStep = { id: 'verify_' + Date.now(), action: 'verify_screen', description: desc, timestamp };
+                newStep = { id: 'verify_' + Date.now() + '_' + (++stepIdCounter), action: 'verify_screen', description: desc, timestamp };
             } else if (type === 'wait_for') {
                 const element = prompt('What element to wait for?');
                 if (!element) return;
-                newStep = { id: 'wait_for_' + Date.now(), action: 'wait_for', target: { text: element }, timeout: 10, timestamp };
+                newStep = { id: 'wait_for_' + Date.now() + '_' + (++stepIdCounter), action: 'wait_for', target: { text: element }, timeout: 10, timestamp };
             } else if (type === 'wait') {
                 const duration = prompt('Wait duration in milliseconds:', '1000');
                 if (!duration) return;
-                newStep = { id: 'wait_' + Date.now(), action: 'wait', duration: parseInt(duration), timestamp };
+                newStep = { id: 'wait_' + Date.now() + '_' + (++stepIdCounter), action: 'wait', duration: parseInt(duration), timestamp };
             }
 
             // Insert at correct position based on timestamp
