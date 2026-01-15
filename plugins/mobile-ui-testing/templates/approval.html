@@ -377,6 +377,82 @@
             font-size: 0.75rem;
         }
 
+        /* Conditional Section */
+        .step-conditional {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+
+        .conditional-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .conditional-label {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--accent-color);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .conditional-toggle {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--accent-color);
+        }
+
+        .conditional-config {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .conditional-field {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .conditional-field label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .conditional-field select,
+        .conditional-field input {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 4px 8px;
+            color: var(--text-primary);
+            font-size: 0.8rem;
+        }
+
+        .conditional-field select {
+            min-width: 140px;
+        }
+
+        .conditional-field input {
+            min-width: 180px;
+        }
+
+        .conditional-badge {
+            background: var(--accent-color);
+            color: white;
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-left: 8px;
+        }
+
         /* Step Editor */
         .step-editor {
             display: flex;
@@ -525,6 +601,7 @@
     <script>
         // Data embedded during generation
         const testData = {{testDataJSON}};
+        const availablePreconditions = testData.availablePreconditions || [];
         let steps = [...testData.steps];
         let activeStepId = null;
         let stepIdCounter = 0;
@@ -624,7 +701,7 @@
                     <div class="step-header">
                         <div class="step-title">
                             <span class="step-number">${index + 1}</span>
-                            <span class="step-action ${actionClass}">${step.action}: ${getStepTargetDisplay(step)}</span>
+                            <span class="step-action ${actionClass}">${step.action}: ${getStepTargetDisplay(step)}${step.conditional?.enabled ? '<span class="conditional-badge">if</span>' : ''}</span>
                         </div>
                         <div class="step-controls">
                             <button onclick="moveStep('${step.id}', -1); event.stopPropagation();" title="Move up">↑</button>
@@ -634,6 +711,8 @@
                     </div>
 
                     ${step.frames ? renderFrames(step) : ''}
+
+                    ${renderConditional(step)}
 
                     ${step.analysis ? renderAnalysis(step.analysis) : ''}
 
@@ -760,6 +839,53 @@
             return '';
         }
 
+        function renderConditional(step) {
+            const isConditional = step.conditional && step.conditional.enabled;
+            const condType = step.conditional?.type || 'if_present';
+            const condValue = step.conditional?.value || step.target?.text || '';
+
+            return `
+                <div class="step-conditional">
+                    <div class="conditional-header">
+                        <span class="conditional-label">
+                            ⚡ CONDITIONAL
+                        </span>
+                        <input type="checkbox" class="conditional-toggle"
+                               ${isConditional ? 'checked' : ''}
+                               onchange="toggleConditional('${step.id}', this.checked); event.stopPropagation();">
+                    </div>
+                    ${isConditional ? `
+                        <div class="conditional-config">
+                            <div class="conditional-field">
+                                <label>Type:</label>
+                                <select onchange="updateConditionalType('${step.id}', this.value); event.stopPropagation();">
+                                    <option value="if_present" ${condType === 'if_present' ? 'selected' : ''}>if_present</option>
+                                    <option value="if_absent" ${condType === 'if_absent' ? 'selected' : ''}>if_absent</option>
+                                    <option value="if_precondition" ${condType === 'if_precondition' ? 'selected' : ''}>if_precondition</option>
+                                    <option value="if_screen" ${condType === 'if_screen' ? 'selected' : ''}>if_screen</option>
+                                </select>
+                            </div>
+                            <div class="conditional-field">
+                                <label>${condType === 'if_precondition' ? 'Precondition:' : 'Check for:'}</label>
+                                ${condType === 'if_precondition' ? `
+                                    <select onchange="updateConditionalValue('${step.id}', this.value); event.stopPropagation();">
+                                        <option value="">Select...</option>
+                                        ${availablePreconditions.map(p =>
+                                            `<option value="${escapeHtml(p)}" ${condValue === p ? 'selected' : ''}>${escapeHtml(p)}</option>`
+                                        ).join('')}
+                                    </select>
+                                ` : `
+                                    <input type="text" value="${escapeHtml(condValue)}"
+                                           onchange="updateConditionalValue('${step.id}', this.value); event.stopPropagation();"
+                                           placeholder="${condType === 'if_screen' ? 'Screen description...' : 'Element text...'}">
+                                `}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
         function setActiveStep(stepId) {
             activeStepId = stepId;
             document.querySelectorAll('.step-card').forEach(card => {
@@ -809,6 +935,40 @@
         function updateStepDuration(stepId, value) {
             const step = steps.find(s => s.id === stepId);
             if (step) step.duration = parseInt(value) || 1000;
+        }
+
+        // Conditional Management
+        function toggleConditional(stepId, enabled) {
+            const step = steps.find(s => s.id === stepId);
+            if (step) {
+                if (!step.conditional) {
+                    step.conditional = {
+                        enabled: false,
+                        type: 'if_present',
+                        value: step.target?.text || ''
+                    };
+                }
+                step.conditional.enabled = enabled;
+                renderSteps();
+            }
+        }
+
+        function updateConditionalType(stepId, type) {
+            const step = steps.find(s => s.id === stepId);
+            if (step && step.conditional) {
+                step.conditional.type = type;
+                if (type === 'if_precondition') {
+                    step.conditional.value = '';
+                }
+                renderSteps();
+            }
+        }
+
+        function updateConditionalValue(stepId, value) {
+            const step = steps.find(s => s.id === stepId);
+            if (step && step.conditional) {
+                step.conditional.value = value;
+            }
         }
 
         // Suggestion Functions
@@ -894,24 +1054,42 @@
             return yaml;
         }
 
-        function stepToYAML(step) {
+        function stepToYAML(step, indent = '      ') {
+            let yaml = '';
+
+            if (step.conditional?.enabled && step.conditional.value) {
+                yaml = `${indent}- ${step.conditional.type}: "${escapeYamlString(step.conditional.value)}"\n`;
+                yaml += `${indent}  then:\n`;
+                yaml += stepToYAMLInner(step, indent + '    ');
+                return yaml;
+            }
+
+            return stepToYAMLInner(step, indent);
+        }
+
+        function stepToYAMLInner(step, indent) {
             let yaml = '';
 
             if (step.action === 'tap') {
                 const target = step.target?.text || `[${step.target?.x}, ${step.target?.y}]`;
-                yaml = `      - tap: "${target}"\n`;
+                yaml = `${indent}- tap: "${escapeYamlString(target)}"\n`;
                 if (step.waitAfter > 0) {
-                    yaml += `      - wait: ${step.waitAfter}ms\n`;
+                    yaml += `${indent}- wait: ${step.waitAfter}ms\n`;
                 }
             } else if (step.action === 'verify_screen') {
-                yaml = `      - verify_screen: "${step.description}"\n`;
+                yaml = `${indent}- verify_screen: "${escapeYamlString(step.description || '')}"\n`;
             } else if (step.action === 'wait_for') {
-                yaml = `      - wait_for: "${step.target?.text}"\n`;
+                yaml = `${indent}- wait_for: "${escapeYamlString(step.target?.text || '')}"\n`;
             } else if (step.action === 'wait') {
-                yaml = `      - wait: ${step.duration}ms\n`;
+                yaml = `${indent}- wait: ${step.duration}ms\n`;
             }
 
             return yaml;
+        }
+
+        function escapeYamlString(str) {
+            if (!str) return '';
+            return String(str).replace(/"/g, '\\"');
         }
 
         function downloadFile(filename, content) {
