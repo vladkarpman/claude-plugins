@@ -110,53 +110,15 @@ python3 ./scripts/extract-frames.py {TEST_FOLDER}/recording/recording.mp4 {TEST_
 
 **If successful:** Frames are saved to `{TEST_FOLDER}/recording/screenshots/touch_NNN.png`
 
-### Step 8: Verification Interview (Optional)
+### Step 8: Analyze Steps and Generate Approval UI
 
-Ask user if they want to add verifications to make this a real test.
+For each touch event, analyze the before and after frames to provide smart descriptions for the approval UI.
 
-**Tool:** `AskUserQuestion`
-```
-Question: "Would you like to add verifications to this test? This makes it validate app behavior, not just replay actions.
-
-Recommended: Say yes to make this a real test
-Skip: Say no to generate coordinate-based playback only"
-```
-
-**If user declines ("no", "skip", etc.):** Skip to Step 9 with no verifications.
-
-**If user accepts ("yes", etc.):** Continue with verification interview.
-
-#### Step 8.1: Detect Checkpoints
+#### Step 8.1: Detect Typing Sequences
 
 **Tool:** `Bash`
 ```bash
-python3 ./scripts/analyze-checkpoints.py {TEST_FOLDER} > {TEST_FOLDER}/recording/checkpoints.json
-```
-
-**If script fails:** Show error and skip to Step 9 with no verifications.
-
-**If successful:** Checkpoints saved to `checkpoints.json`.
-
-#### Step 8.2: Load Checkpoints
-
-**Tool:** `Read` file `{TEST_FOLDER}/recording/checkpoints.json`
-
-Parse JSON array of checkpoint objects. Each checkpoint has:
-- `touch_index`: Index in touch_events array
-- `timestamp`: Time in seconds
-- `screenshot_path`: Path to screenshot
-- `score`: Importance score
-- `reasons`: Why this is a good checkpoint
-
-**Limit to 8 checkpoints:** If more than 8 detected, keep top 8 by score (highest scores first).
-
-Store as `{CHECKPOINTS}` array. Extract the `reasons` field from each checkpoint object.
-
-#### Step 8.3: Detect Typing Sequences
-
-**Tool:** `Bash`
-```bash
-python3 ./scripts/analyze-typing.py {TEST_FOLDER}
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-typing.py" {TEST_FOLDER}
 ```
 
 This script analyzes touch patterns to detect keyboard typing sequences using:
@@ -165,291 +127,129 @@ This script analyzes touch patterns to detect keyboard typing sequences using:
 - Minimum sequence length (3+ consecutive taps)
 - X-coordinate variance (confirms multiple keys, not repeated taps)
 
-**Output:** `{TEST_FOLDER}/typing_sequences.json`
+**Output:** `{TEST_FOLDER}/recording/typing_sequences.json`
 
-**If no sequences detected or script fails:** Continue to Step 8.5 (checkpoint interview).
+**If script fails:** Continue without typing detection (user can add type commands manually in UI).
 
-**If sequences detected:** Continue to Step 8.4 (typing interview).
+#### Step 8.2: Get Screenshot List
 
-#### Step 8.4: Typing Interview (if sequences detected)
+**Tool:** `Glob` pattern `{TEST_FOLDER}/recording/screenshots/step_*_before_*.png`
 
-**Tool:** `Read` file `{TEST_FOLDER}/recording/typing_sequences.json`
+Store the list of screenshot files. Extract step numbers from filenames.
 
-Parse JSON with structure:
+**Count unique steps:** Each step has multiple before/after frames. Count unique step numbers.
+
+#### Step 8.3: Analyze Steps (Before/After Diff)
+
+For each unique step number, analyze the before and after frames to provide smart descriptions.
+
+**For each step {N} (formatted as 3-digit: 001, 002, etc.):**
+
+**Step 8.3.1: View before frame**
+
+**Tool:** `Read` file `{TEST_FOLDER}/recording/screenshots/step_{N}_before_3.png`
+
+This shows the screen state 300ms before the tap (frame index 3 = closest to tap).
+
+**Step 8.3.2: View after frame**
+
+**Tool:** `Read` file `{TEST_FOLDER}/recording/screenshots/step_{N}_after_3.png`
+
+This shows the screen state 300ms after the tap.
+
+**Step 8.3.3: Analyze and describe**
+
+Analyze both frames and create a description object:
+- `before`: Brief description of the screen state before the tap (1 sentence)
+- `action`: What element was tapped (identify button, text, area)
+- `after`: What changed after the tap (1 sentence)
+- `suggestedVerification`: Propose a verify_screen based on the change (null if no meaningful verification)
+
+**Store analysis** in memory for approval generation.
+
+**Example analysis for one step:**
 ```json
 {
-  "sequences": [
-    {
-      "start_touch_index": 16,
-      "end_touch_index": 23,
-      "touch_count": 8,
-      "duration_ms": 2576,
-      "text": "",
-      "submit": false
-    }
-  ],
-  "total_sequences": 3
+  "before": "Calculator app with empty display",
+  "action": "Tapped '5' button on number pad",
+  "after": "Display now shows '5'",
+  "suggestedVerification": "Display shows the number 5"
 }
 ```
 
-Store as `{TYPING_SEQUENCES}` array.
+**Guidelines for analysis:**
+- Keep descriptions concise (under 100 characters each)
+- Focus on user-visible changes
+- Suggested verification should describe expected state, not the action
+- Set suggestedVerification to null for transitional taps (navigation, scrolling)
 
-**For each typing sequence, execute these steps:**
+**Repeat Step 8.3.1-8.3.3 for each step.**
 
-**Step 8.4.1: Show sequence context**
+#### Step 8.4: Build Analysis Data
 
-Display to user:
-```
-Detected keyboard typing sequence {N} of {TOTAL}:
-- Touches: {start_touch_index+1} to {end_touch_index+1} ({touch_count} taps)
-- Duration: {duration_ms}ms
-- Region: Bottom 40% of screen (keyboard area)
-```
+Create the analysis data structure combining all step analyses:
 
-**Step 8.4.2: Ask what was typed**
-
-**Tool:** `AskUserQuestion`
-```
-Question: "What text did you type in this sequence?
-
-You can type the exact text or leave empty to skip this sequence."
-```
-
-**Parse user response:**
-- If empty or "skip": Skip this sequence, continue to next
-- Otherwise: Store text in sequence['text']
-
-**Step 8.4.3: Ask about submit action**
-
-**Tool:** `AskUserQuestion`
-```
-Question: "Did you press Enter/Search/Done after typing this text?
-
-A) Yes, I pressed Enter/Search to submit
-B) No, I just typed the text"
-```
-
-**Parse user response:**
-- If "A" or "yes" or "enter" or "search" or "submit": Set sequence['submit'] = true
-- If "B" or "no": Set sequence['submit'] = false
-
-**Step 8.4.4: Confirmation**
-
-Display to user:
-```
-✓ Typing sequence recorded:
-  Text: "{text}"
-  Submit: {submit}
-```
-
-**Repeat Steps 8.4.1-8.4.4 for each typing sequence.**
-
-**Step 8.4.5: Save Typing Data**
-
-**Tool:** `Write` to `{TEST_FOLDER}/recording/typing_sequences.json`
-
-Update the sequences with user-provided text and submit values:
 ```json
 {
-  "sequences": [
-    {
-      "start_touch_index": 16,
-      "end_touch_index": 23,
-      "touch_count": 8,
-      "duration_ms": 2576,
-      "text": "android development",
-      "submit": true
-    }
-  ],
-  "total_sequences": 3
-}
-```
-
-**If no sequences had text entered:** Write original file (all text fields empty).
-
-#### Step 8.5: Iterate Through Checkpoints
-
-For each checkpoint (up to 8), execute these steps:
-
-**Step 8.5.1: Show checkpoint context**
-
-Display to user:
-```
-Checkpoint {N} of {TOTAL} at {TIMESTAMP}s
-Reasons: {CHECKPOINT_REASONS}
-```
-
-Where `{CHECKPOINT_REASONS}` is the checkpoint's `reasons` array joined with ", ".
-
-**Step 8.5.2: View screenshot**
-
-**Tool:** `Read` the screenshot file at `{CHECKPOINT.screenshot_path}`
-
-This shows you what the screen looks like at this checkpoint.
-
-**Step 8.5.3: Analyze screenshot and suggest verification**
-
-Analyze the screenshot from Step 8.3.2 and suggest appropriate verifications.
-
-**Process:**
-1. Examine the screenshot to understand the screen state
-2. Identify key UI elements and their purpose
-3. Suggest a verification that validates important app behavior
-4. Provide alternative verification options
-
-**Create suggestion with this structure:**
-- `screen_description`: Brief description of what's visible (1-2 sentences)
-- `suggested_verification`: Primary recommended verification (verify_screen format)
-- `alternatives`: Array of 2-3 alternative verifications
-
-**Examples of good verifications:**
-- `verify_screen: "Login form with email and password fields visible"`
-- `verify_screen: "Shopping cart shows 3 items with correct total"`
-- `verify_screen: "Success message displayed after submission"`
-- `verify_contains: "Welcome back, John"`
-
-**Avoid:**
-- Verifying transitional states (loading screens, animations)
-- Overly specific text that might change
-- Coordinate-based assertions
-
-**Step 8.5.4: Ask user to choose**
-
-**Tool:** `AskUserQuestion`
-```
-Question: "Checkpoint {N} of {TOTAL} at {TIMESTAMP}s
-
-Screen: {screen_description}
-
-What should we verify here?
-
-A) {suggested_verification} (recommended)
-B) {alternatives[0]}
-C) Skip this checkpoint
-D) I'll describe a custom verification
-
-You can type the letter (A/B/C/D) or describe what you want to verify in your own words."
-```
-
-**Parse user response:**
-- If "A" or contains suggested verification text: Use suggested_verification
-- If "B" or contains first alternative text: Use alternatives[0]
-- If "C" or "skip": Skip this checkpoint
-- If "D" or "custom" or other text: Treat as custom description
-
-**Step 8.5.5: Handle custom verification**
-
-**If user chose custom (option D):**
-
-**Tool:** `AskUserQuestion`
-```
-Question: "Describe what you want to verify at this checkpoint:"
-```
-
-Store custom description as verification text.
-
-**Tool:** `AskUserQuestion` for confirmation:
-```
-Question: "I'll add this verification: '{USER_CUSTOM_TEXT}'
-
-Is this correct?
-
-A) Yes, use this verification
-B) No, let me revise it"
-```
-
-**If user chooses B (revise):** Return to "Describe what you want to verify" question (Step 8.5.5 start).
-
-**If user chooses A (yes):** Continue to store verification (Step 8.5.6).
-
-**Step 8.5.6: Store verification**
-
-Add to `{VERIFICATIONS}` array:
-```json
-{
-  "touch_index": CHECKPOINT.touch_index,
-  "type": "screen",
-  "description": "CHOSEN_VERIFICATION_TEXT"
-}
-```
-
-**Repeat Steps 8.5.1-8.5.6 for each checkpoint.**
-
-#### Step 8.6: Save Verifications
-
-**Tool:** `Write` to `{TEST_FOLDER}/recording/verifications.json`
-
-Write the `{VERIFICATIONS}` array as JSON:
-```json
-[
-  {
-    "touch_index": 5,
-    "type": "screen",
-    "description": "Photo generation started"
+  "step_001": {
+    "analysis": {
+      "before": "Calculator app with empty display",
+      "action": "Tapped '5' button on number pad",
+      "after": "Display now shows '5'"
+    },
+    "suggestedVerification": "Display shows the number 5"
   },
-  {
-    "touch_index": 12,
-    "type": "screen",
-    "description": "Edit controls available"
+  "step_002": {
+    "analysis": {
+      "before": "Display shows '5'",
+      "action": "Tapped '+' operator button",
+      "after": "Display shows '5 +'"
+    },
+    "suggestedVerification": null
   }
-]
+}
 ```
 
-**If no verifications selected:** Write empty array `[]`.
+**Tool:** `Write` to `{TEST_FOLDER}/recording/analysis.json`
 
-### Step 9: Generate YAML Test
+Write the complete analysis data as JSON.
+
+#### Step 8.5: Generate Approval UI
 
 **Tool:** `Bash`
 ```bash
-python3 ./scripts/generate-test.py {TEST_FOLDER} {APP_PACKAGE} {TEST_NAME}
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/generate-approval.py" \
+    "{TEST_FOLDER}/recording" \
+    --test-name "{TEST_NAME}" \
+    --app-package "{APP_PACKAGE}" \
+    --output "{TEST_FOLDER}/approval.html"
 ```
 
-This script:
-- Loads touch_events.json
-- Loads verifications.json (if exists)
-- Loads typing_sequences.json (if exists)
-- Converts touches to YAML actions with percentage coordinates
-- Replaces keyboard tap sequences with `type` commands
-- Inserts verification steps at checkpoints
-- Writes to `{TEST_FOLDER}/test.yaml`
+**If script fails:** Show error and provide fallback instructions for manual YAML creation.
 
-**Output format:**
-```yaml
-# {TEST_NAME} (Recorded)
-# Recorded on: {TODAY_DATE}
-# Total actions: {EVENT_COUNT}
-
-config:
-  app: {APP_PACKAGE}
-
-setup:
-  - terminate_app
-  - launch_app
-  - wait: 3s
-
-teardown:
-  - terminate_app
-
-tests:
-  - name: {TEST_NAME}
-    description: Recorded test with verifications
-    steps:
-      - tap: ["50%", "80%"]
-      - tap: ["30%", "40%"]
-      - verify_screen: "Photo generation started"  # Inserted verification
-      - tap: ["60%", "70%"]
-```
-
-**If script fails:** Show error message with script output.
-
-### Step 10: Cleanup Recording State
+#### Step 8.6: Open Approval UI
 
 **Tool:** `Bash`
 ```bash
-rm -f .claude/recording-state.json
+open "{TEST_FOLDER}/approval.html"
 ```
 
-### Step 11: Output Results
+**Note:** On Linux, use `xdg-open` instead of `open`.
+
+### Step 9: Update Recording State
+
+**Tool:** `Write` to `.claude/recording-state.json`
+
+```json
+{
+  "status": "approval_pending",
+  "testName": "{TEST_NAME}",
+  "testFolder": "{TEST_FOLDER}",
+  "approvalFile": "{TEST_FOLDER}/approval.html"
+}
+```
+
+### Step 10: Output Results
 
 Output to user:
 
@@ -459,19 +259,29 @@ Recording Analysis Complete
 
 Touch events captured: {EVENT_COUNT}
 Video duration: {DURATION}s
-Verifications added: {VERIFICATION_COUNT}
+Steps analyzed: {STEP_COUNT}
 
-Generated: {TEST_FOLDER}/test.yaml
+Approval UI opened in browser: {TEST_FOLDER}/approval.html
 
-Next steps:
-  1. Review the generated test
-  2. Run with: /run-test {TEST_FOLDER}/
-  3. Refine verifications or actions as needed
+Review your recorded test:
+  1. Check each step's before/after frames
+  2. Accept or skip suggested verifications
+  3. Edit tap targets or add wait times if needed
+  4. Add new steps using video scrubber
+  5. Click "Export YAML" when done
+
+The YAML file will be downloaded to your Downloads folder.
+Move it to: {TEST_FOLDER}/test.yaml
+
+Then run with: /run-test {TEST_FOLDER}/
 
 ══════════════════════════════════════════════════════════
 ```
 
-**Where {VERIFICATION_COUNT}:** Count from verifications.json array (or 0 if file doesn't exist).
+**Where:**
+- `{EVENT_COUNT}`: Number of touch events from touch_events.json
+- `{DURATION}`: Video duration in seconds (from ffprobe or touch event timestamps)
+- `{STEP_COUNT}`: Number of unique steps analyzed
 
 ## Error Handling
 
@@ -481,23 +291,31 @@ Next steps:
 | Video corrupted | Warn, continue with coordinates only |
 | No touch events | Show tips for better recording |
 | Frame extraction fails | Continue with coordinates only |
-| Checkpoint detection fails | Skip verification interview, generate coordinate-based test |
-| AI suggestion fails | Use fallback suggestion, continue interview |
+| Typing detection fails | Continue without typing sequences |
+| Step analysis fails | Use empty analysis, user can edit in UI |
+| Approval UI generation fails | Show error, provide manual YAML template |
+| Browser open fails | Show file path for manual opening |
 
 ## Output Files
 
 After completion:
 ```
 {TEST_FOLDER}/
-├── test.yaml             ← Generated test (run with /run-test)
-└── recording/            ← Recording artifacts (for debugging)
-    ├── touch_events.json     ← Raw touch data
-    ├── typing_sequences.json ← Detected typing + user input
-    ├── verifications.json    ← User-selected verifications
-    ├── checkpoints.json      ← Detected verification points
+├── approval.html         ← Approval UI (open in browser)
+├── test.yaml             ← Generated after export from approval UI
+└── recording/            ← Recording artifacts
+    ├── touch_events.json     ← Raw touch data with timestamps
+    ├── typing_sequences.json ← Detected keyboard typing
+    ├── analysis.json         ← AI step analysis
     ├── recording.mp4         ← Video file
     └── screenshots/          ← Extracted frames
-        ├── touch_001.png
-        ├── touch_002.png
+        ├── step_001_before_1.png
+        ├── step_001_before_2.png
+        ├── step_001_before_3.png
+        ├── step_001_after_1.png
+        ├── step_001_after_2.png
+        ├── step_001_after_3.png
         └── ...
 ```
+
+**Note:** The `test.yaml` file is created when user clicks "Export YAML" in the approval UI. The exported file downloads to the browser's download folder and should be moved to the test folder.
