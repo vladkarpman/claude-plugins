@@ -226,7 +226,7 @@ Start recording user actions to generate a test automatically.
 
 **How it works:**
 1. Checks ffmpeg is installed
-2. Starts video recording (`adb screenrecord`)
+2. Starts video recording (via screen-buffer-mcp)
 3. Captures touch events in real-time
 4. You interact with your app normally
 
@@ -748,7 +748,7 @@ xcrun simctl list devices | grep Booted
 
 If you see "moov atom not found" errors:
 - Ensure you use `/stop-recording` to stop (not Ctrl+C)
-- The plugin sends SIGINT to screenrecord to finalize the video properly
+- The plugin properly finalizes the video file when stopped correctly
 - Check ffmpeg is installed: `ffmpeg -version`
 
 ## Contributing
