@@ -858,6 +858,9 @@
                         <div class="conditional-config">
                             <div class="conditional-field">
                                 <label>Type:</label>
+                                <!-- Note: if_all_present and if_any_present are not included because they require
+                                     array input (multiple elements), which needs a different UI pattern (e.g.,
+                                     multi-select or tag input). These operators can be added manually in YAML. -->
                                 <select onchange="updateConditionalType('${step.id}', this.value); event.stopPropagation();">
                                     <option value="if_present" ${condType === 'if_present' ? 'selected' : ''}>if_present</option>
                                     <option value="if_absent" ${condType === 'if_absent' ? 'selected' : ''}>if_absent</option>
@@ -1087,9 +1090,14 @@
             return yaml;
         }
 
+        // Escape special characters for YAML double-quoted strings
         function escapeYamlString(str) {
             if (!str) return '';
-            return String(str).replace(/"/g, '\\"');
+            return String(str)
+                .replace(/\\/g, '\\\\')
+                .replace(/"/g, '\\"')
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '\\r');
         }
 
         function downloadFile(filename, content) {
