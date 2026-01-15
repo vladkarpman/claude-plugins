@@ -42,7 +42,7 @@ def load_touch_events(events_file: Path) -> List[Dict[str, Any]]:
         raise ValueError("touch_events.json must contain a list of events")
 
     for i, event in enumerate(data):
-        required_fields = ["timestamp", "gesture_type", "x", "y"]
+        required_fields = ["timestamp", "gesture", "x", "y"]
         for field in required_fields:
             if field not in event:
                 raise ValueError(f"Event {i} missing required field: {field}")
@@ -108,7 +108,7 @@ def detect_navigation_events(touch_events: List[Dict[str, Any]], screen_width: i
     navigation = []
 
     for i, event in enumerate(touch_events):
-        if event["gesture_type"] != "tap":
+        if event["gesture"] != "tap":
             continue
 
         x_percent = (event["x"] / screen_width) * 100
