@@ -35,9 +35,9 @@ sudo apt install ffmpeg
 choco install ffmpeg
 ```
 
-### screen-buffer-mcp (For Verification Only)
+### screen-buffer-mcp (Video Recording and Screenshots)
 
-Used only for real-time screenshot verification (`verify_screen`, `if_screen`):
+Used for video recording and real-time screenshots:
 
 ```bash
 # Install uv (Python package runner, like npx for Python)
@@ -46,7 +46,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Restart Claude Code after installation
 ```
 
-**Note:** The plugin primarily uses video recording with parallel frame extraction. screen-buffer-mcp is only used for verification actions that require immediate visual analysis.
+**Note:** screen-buffer-mcp provides video recording without time limits (replaces adb screenrecord) and fast screenshots for verification actions.
 
 ### Python Dependencies (Optional)
 
@@ -90,7 +90,6 @@ scripts/
 ├── generate-report.py       # JSON→HTML report generator
 ├── load-config.py           # Load merged configuration
 ├── check-ffmpeg.sh          # Verifies ffmpeg is installed
-├── record-video.sh          # adb screenrecord wrapper with error handling
 ├── monitor-touches.py       # Captures touch events via adb getevent
 ├── extract-frames.py        # Extracts frames from video at touch timestamps
 ├── parse-touches.py         # Parses raw touch events into gestures (legacy)
@@ -123,7 +122,7 @@ Test Execution:
   Start video recording → Execute steps → Stop recording → Extract frames → Generate report
 
 Recording:
-  Start video + touch monitor → User interacts → Stop → Extract frames → Generate approval UI
+  screen-buffer-mcp start recording → Start touch monitor → User interacts → Stop recording → Extract frames → Generate approval UI
 
 Verification (verify_screen, if_screen):
   screen-buffer tool (real-time screenshot) → AI analysis → Pass/Fail
@@ -133,31 +132,30 @@ Verification (verify_screen, if_screen):
 
 The plugin uses MCP servers for device interaction and video recording with ffmpeg for frame capture.
 
-### Video Recording + Frame Extraction (Primary)
+### Video Recording (screen-buffer-mcp)
 
-The plugin records video during test execution and recording sessions, then extracts frames in parallel using ffmpeg.
+The plugin uses screen-buffer-mcp for video recording during test execution and recording sessions.
 
 **Flow:**
-1. Video recording starts via `adb screenrecord`
+1. Video recording starts via `device_start_recording`
 2. Test steps execute (no screenshot overhead)
-3. Video stops and is pulled from device
+3. Video stops via `device_stop_recording`
 4. `extract-frames.py` extracts 7 frames per step in parallel:
    - 3 before frames (300ms, 200ms, 100ms before action)
    - 1 exact frame (at action moment)
    - 3 after frames (100ms, 200ms, 300ms after action)
 
 **Benefits:**
+- No recording time limit (unlike adb screenrecord's 3-minute limit)
 - No runtime overhead during test execution
 - Parallel frame extraction (10+ frames/sec with 32 workers)
-- More frames per step (7 vs 6 in screenshot mode)
-
-### screen-buffer-mcp (Verification Only)
-
-Used only for real-time verification actions (`verify_screen`, `if_screen`) that need immediate visual analysis.
+- Video saved directly to host (no adb pull needed)
 
 **Tools used:**
 | Tool | Description |
 |------|-------------|
+| `device_start_recording` | Start video recording to file |
+| `device_stop_recording` | Stop recording and finalize video |
 | `device_screenshot` | Take screenshot for verification (~50ms) |
 
 **Configuration** (`.mcp.json`):
@@ -229,20 +227,23 @@ allowed-tools:
 
 ## Recording Pipeline (Screenrecord-based)
 
-**Requires:** ffmpeg installed (`brew install ffmpeg`)
+**Requires:**
+- ffmpeg installed (`brew install ffmpeg`) for frame extraction
+- screen-buffer-mcp for video recording
 
 ```
 /record-test {name}
     → Check ffmpeg availability
     → Create tests/{name}/ folder structure
-    → Start video recording (adb screenrecord) in background
+    → Start video recording via screen-buffer-mcp (device_start_recording)
     → Start touch monitor (adb getevent) in background
     → User interacts with app naturally
     → Touch events saved to touch_events.json with timestamps
 
 /stop-recording
-    → Stop video and touch capture processes
-    → Pull video from device (recording.mp4)
+    → Stop video recording via screen-buffer-mcp (device_stop_recording)
+    → Stop touch capture process
+    → Video already saved to tests/{name}/recording/recording.mp4
     → Extract frames from video using ffmpeg:
         - For each touch event, extract frame 100ms BEFORE touch
         - This shows UI state at moment of tap decision
@@ -601,9 +602,6 @@ python3 scripts/extract-frames.py \
   tests/{name}/recording/recording.mp4 \
   tests/{name}/recording/touch_events.json \
   tests/{name}/recording/screenshots/
-
-# Start video recording manually
-./scripts/record-video.sh /sdcard/test.mp4
 ```
 
 ## Agent Usage Patterns
