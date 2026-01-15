@@ -28,13 +28,22 @@ preview:
   device_spec: "spec:width=411dp,height=891dp"
   font_scale: 1.0
 
-# Validation thresholds
+# Validation settings
 validation:
-  visual_similarity_threshold: 0.92
-  max_ralph_iterations: 10
-  preview_screenshot_delay: "auto"
-  primary_method: "llm_vision"         # "llm_vision" or "ssim" (legacy)
   ssim_sanity_threshold: 0.4           # Flag for review if LLM passes but SSIM below this
+
+  # Paparazzi phase (JVM-based fast iteration)
+  paparazzi:
+    enabled: true                      # Enable Paparazzi validation (Phase 3)
+    threshold: 0.95                    # SSIM threshold (stricter - deterministic JVM rendering)
+    max_iterations: 5                  # Max iterations in Paparazzi phase
+    device_config: "PIXEL_5"           # Paparazzi device configuration
+
+  # Device phase (Android device/emulator verification)
+  device:
+    enabled: true                      # Enable device validation (Phase 4) - default: true
+    threshold: 0.92                    # SSIM threshold for sanity check
+    max_iterations: 5                  # Max iterations in device phase
 
 # Batch processing
 batch:
@@ -61,3 +70,7 @@ output:
   default_output_dir: "app/src/main/java"
   include_comments: false
   extract_theme_from_existing: true
+
+# Theme configuration for device testing
+theme:
+  composable: "com.test.composedesigner.ui.theme.ComposeDesignerTestTheme"

@@ -167,6 +167,11 @@ output:
   default_output_dir: "{prompted_output_dir}"
   include_comments: false              # Add explanatory comments to generated code
   extract_theme_from_existing: true    # Learn colors/typography from existing code
+
+# Theme configuration for device testing
+theme:
+  composable: ""                           # Full path to theme composable (e.g., "com.myapp.ui.theme.AppTheme")
+                                           # Leave empty to use MaterialTheme
 ```
 
 ### 4. Validate Configuration
