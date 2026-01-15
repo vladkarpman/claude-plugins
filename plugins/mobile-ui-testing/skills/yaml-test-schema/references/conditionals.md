@@ -3,11 +3,15 @@
 **Implementation Status:** ✅ Fully implemented (Phase 1)
 
 **Available Operators:**
-- ✅ `if_exists` - Single element check
-- ✅ `if_not_exists` - Inverse element check
-- ✅ `if_all_exist` - Multiple elements (AND logic)
-- ✅ `if_any_exist` - Multiple elements (OR logic)
+- ✅ `if_present` - Single element check (formerly if_exists)
+- ✅ `if_absent` - Inverse element check (formerly if_not_exists)
+- ✅ `if_all_present` - Multiple elements AND (formerly if_all_exist)
+- ✅ `if_any_present` - Multiple elements OR (formerly if_any_exist)
 - ✅ `if_screen` - AI vision-based screen matching
+- 🆕 `if_precondition` - Precondition state check
+
+**Backward Compatibility:**
+Legacy operator names (`if_exists`, `if_not_exists`, `if_all_exist`, `if_any_exist`) are still supported and automatically mapped to new names.
 
 **Future Operators (Phase 2):**
 - 🔄 `if_element_enabled` - Element state check (requires mobile-mcp support)
@@ -31,12 +35,12 @@ All conditionals use the same structure:
 
 ## Available Conditionals
 
-### if_exists
+### if_present
 
 Execute `then` block if element is found on screen, `else` block otherwise.
 
 ```yaml
-- if_exists: "Enable Notifications"
+- if_present: "Enable Notifications"
   then:
     - tap: "Enable Notifications"
   else:
@@ -48,12 +52,12 @@ Execute `then` block if element is found on screen, `else` block otherwise.
 - Conditional UI elements (banners, prompts)
 - A/B tested features
 
-### if_not_exists
+### if_absent
 
-Inverse of `if_exists` - execute `then` block if element is NOT found.
+Inverse of `if_present` - execute `then` block if element is NOT found.
 
 ```yaml
-- if_not_exists: "Login"
+- if_absent: "Login"
   then:
     - tap: "Account"
     - tap: "Logout"
@@ -65,12 +69,12 @@ Inverse of `if_exists` - execute `then` block if element is NOT found.
 - Skip already-completed setup steps
 - Detect missing expected elements (error states)
 
-### if_all_exist
+### if_all_present
 
 Execute `then` block only if ALL specified elements are present.
 
 ```yaml
-- if_all_exist:
+- if_all_present:
     - "Email"
     - "Password"
     - "Login"
@@ -85,12 +89,12 @@ Execute `then` block only if ALL specified elements are present.
 - Multi-element state checks
 - Compound prerequisites
 
-### if_any_exist
+### if_any_present
 
 Execute `then` block if ANY of the specified elements are present.
 
 ```yaml
-- if_any_exist:
+- if_any_present:
     - "Rate Us"
     - "Leave Review"
     - "Not Now"
@@ -122,7 +126,7 @@ Execute `then` block if screen matches AI-analyzed description.
 - When element text is unreliable (images, icons)
 - Contextual understanding needed (e.g., "error state")
 
-**Performance note:** AI vision analysis is slower than element checks. Prefer `if_exists` when possible.
+**Performance note:** AI vision analysis is slower than element checks. Prefer `if_present` when possible.
 
 ### if_element_enabled (Not Yet Implemented)
 
@@ -130,10 +134,10 @@ Execute `then` block if screen matches AI-analyzed description.
 
 **Reason:** The mobile-mcp `list_elements_on_screen` tool doesn't expose element enabled/disabled state. This operator will be added when the underlying tool supports it.
 
-**Workaround:** Use `if_exists` combined with `verify_screen` for clickability checks:
+**Workaround:** Use `if_present` combined with `verify_screen` for clickability checks:
 
 ```yaml
-- if_exists: "Submit Button"
+- if_present: "Submit Button"
   then:
     - verify_screen: "Submit button is enabled and clickable"
     - tap: "Submit Button"
@@ -164,7 +168,7 @@ Handle OS permission prompts that may not appear (already granted):
 
 ```yaml
 - tap: "Enable Location"
-- if_exists: "Allow"
+- if_present: "Allow"
   then:
     - tap: "Allow"
 # Continue regardless of whether permission prompt appeared
@@ -176,7 +180,7 @@ Handle OS permission prompts that may not appear (already granted):
 Different flows based on user state (logged in vs out):
 
 ```yaml
-- if_exists: "Profile Picture"
+- if_present: "Profile Picture"
   then:
     # Already logged in
     - tap: "Settings"
@@ -195,7 +199,7 @@ Detect and recover from error states:
 
 ```yaml
 - tap: "Submit"
-- if_any_exist:
+- if_any_present:
     - "Network Error"
     - "Server Unavailable"
     - "Retry"
@@ -211,7 +215,7 @@ Skip tutorial screens that don't show on repeat sessions:
 
 ```yaml
 - launch_app
-- if_exists: "Get Started"
+- if_present: "Get Started"
   then:
     # First time user flow
     - tap: "Get Started"
@@ -228,7 +232,7 @@ Skip tutorial screens that don't show on repeat sessions:
 Handle A/B tested UI differences:
 
 ```yaml
-- if_exists: "New Dashboard"
+- if_present: "New Dashboard"
   then:
     # Test variant A
     - tap: "New Dashboard"
@@ -247,7 +251,7 @@ Handle A/B tested UI differences:
 **Use element checks for simple presence/absence:**
 
 ```yaml
-- if_exists: "Allow Notifications"
+- if_present: "Allow Notifications"
   then:
     - tap: "Allow Notifications"
 ```
@@ -255,9 +259,9 @@ Handle A/B tested UI differences:
 **Chain conditionals for complex flows:**
 
 ```yaml
-- if_not_exists: "Login"
+- if_absent: "Login"
   then:
-    - if_exists: "Profile"
+    - if_present: "Profile"
       then:
         - tap: "Profile"
         - tap: "Logout"
@@ -267,7 +271,7 @@ Handle A/B tested UI differences:
 
 ```yaml
 # Good
-- if_exists: "Continue"
+- if_present: "Continue"
   then:
     - tap: "Continue"
 
@@ -277,10 +281,10 @@ Handle A/B tested UI differences:
     - tap: "Continue"
 ```
 
-**Use `if_any_exist` for variant handling:**
+**Use `if_any_present` for variant handling:**
 
 ```yaml
-- if_any_exist:
+- if_any_present:
     - "Got It"
     - "OK"
     - "Dismiss"
@@ -294,11 +298,11 @@ Handle A/B tested UI differences:
 
 ```yaml
 # Too complex - hard to read and maintain
-- if_exists: "A"
+- if_present: "A"
   then:
-    - if_exists: "B"
+    - if_present: "B"
       then:
-        - if_exists: "C"
+        - if_present: "C"
           then:
             - tap: "D"
 ```
@@ -307,7 +311,7 @@ Handle A/B tested UI differences:
 
 ```yaml
 # Bad - login flow is always the same
-- if_exists: "Login"
+- if_present: "Login"
   then:
     - tap: "Login"
 
@@ -324,7 +328,7 @@ Handle A/B tested UI differences:
     - tap: "Login"
 
 # Fast - direct element check
-- if_exists: "Login"
+- if_present: "Login"
   then:
     - tap: "Login"
 ```
@@ -333,7 +337,7 @@ Handle A/B tested UI differences:
 
 ```yaml
 # Bad - hiding timing issues
-- if_exists: "Loading"
+- if_present: "Loading"
   then:
     - wait: 5s
 
@@ -350,12 +354,12 @@ Conditionals perform instant checks without retries or polling:
 ```yaml
 # ✓ GOOD: Wait first, then check
 - wait_for: "Home"
-- if_exists: "Upgrade Dialog"
+- if_present: "Upgrade Dialog"
   then:
     - tap: "Maybe Later"
 
 # ✗ BAD: Relying on conditional to wait
-- if_exists: "Upgrade Dialog"  # May execute before element appears
+- if_present: "Upgrade Dialog"  # May execute before element appears
   then:
     - tap: "Maybe Later"
 ```
@@ -367,11 +371,11 @@ If you need to wait for an element before checking conditions, use `wait_for` ex
 Conditionals support unlimited nesting depth:
 
 ```yaml
-- if_exists: "A"
+- if_present: "A"
   then:
-    - if_exists: "B"
+    - if_present: "B"
       then:
-        - if_exists: "C"
+        - if_present: "C"
           then:
             - tap: "Deep nested action"
 ```
@@ -390,7 +394,7 @@ Conditionals support unlimited nesting depth:
 Branch steps use decimal notation:
 
 ```
-[3/8] if_exists "Dialog"
+[3/8] if_present "Dialog"
       ✓ Condition true, executing then branch (2 steps)
 [3.1/8] tap "OK"
         ✓ Tapped at (540, 800)
@@ -419,12 +423,12 @@ Branch steps use decimal notation:
 
 ```yaml
 # Single test doing too much
-- if_exists: "Login"
+- if_present: "Login"
   then:
     # 20 steps for login flow
     - ...
   else:
-    - if_exists: "Shopping Cart"
+    - if_present: "Shopping Cart"
       then:
         # 15 steps for checkout flow
         - ...
@@ -455,7 +459,7 @@ tests:
 
 ## Implementation Notes
 
-- Element checks (`if_exists`, `if_all_exist`, etc.) use the same element resolution as `tap` and `wait_for`
+- Element checks (`if_present`, `if_all_present`, etc.) use the same element resolution as `tap` and `wait_for`
 - Screen checks (`if_screen`) invoke AI vision analysis (slower, use sparingly)
 - Nested conditionals are supported but discouraged beyond 2 levels
 - `else` block is always optional - test continues after conditional block
@@ -467,7 +471,7 @@ tests:
 
 ```yaml
 - tap: "Sign Up"
-- if_exists: "Allow Tracking"
+- if_present: "Allow Tracking"
   then:
     - tap: "Allow"
 # No else needed - continue either way
@@ -476,7 +480,7 @@ tests:
 ### Medium: State-Based Flow
 
 ```yaml
-- if_not_exists: "Dashboard"
+- if_absent: "Dashboard"
   then:
     # Need to log in first
     - tap: "Login"
@@ -491,7 +495,7 @@ tests:
 
 ```yaml
 - tap: "Checkout"
-- if_all_exist:
+- if_all_present:
     - "Name"
     - "Address"
     - "Payment Method"
@@ -501,7 +505,7 @@ tests:
     - type_in: { element: "Address", text: "123 Main St" }
     - tap: "Continue"
   else:
-    - if_exists: "Login to Continue"
+    - if_present: "Login to Continue"
       then:
         # Requires login
         - tap: "Login"
