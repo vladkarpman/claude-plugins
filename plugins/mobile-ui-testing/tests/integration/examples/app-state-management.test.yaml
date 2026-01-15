@@ -1,6 +1,12 @@
 config:
   app: com.google.android.calculator
 
+setup:
+  - terminate_app
+
+teardown:
+  - terminate_app
+
 tests:
   - name: Clear app data resets calculator
     steps:
