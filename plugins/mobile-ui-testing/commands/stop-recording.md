@@ -8,6 +8,7 @@ allowed-tools:
   - Glob
   - Task
   - AskUserQuestion
+  - mcp__screen-buffer__device_stop_recording
 ---
 
 # Stop Recording - Generate YAML Test
@@ -36,7 +37,6 @@ Start a new recording with:
 - `{APP_PACKAGE}` = appPackage
 - `{DEVICE_ID}` = device
 - `{VIDEO_START_TIME}` = videoStartTime
-- `{VIDEO_PID}` = videoPid
 - `{TOUCH_PID}` = touchPid
 - `{RECORDING_TYPE}` = type (default: "test" if not present)
 - `{PRECONDITION_NAME}` = preconditionName (if type is "precondition")
@@ -49,53 +49,38 @@ Start a new recording with:
 
 This ensures subsequent steps can use `{TEST_FOLDER}` consistently regardless of recording type.
 
-### Step 2: Stop Screenrecord on Device (CRITICAL)
+### Step 2: Stop Video Recording
 
-**Tool:** `Bash`
-```bash
-# Send SIGINT to screenrecord - this writes the moov atom and finalizes the file
-adb -s {DEVICE_ID} shell pkill -2 screenrecord
+**Tool:** `mcp__screen-buffer__device_stop_recording`
+```json
+{}
 ```
 
-**Why SIGINT (-2)?** Screenrecord only writes the video file index (moov atom) when it receives SIGINT. Without this, the file is corrupted and unreadable.
+This stops the recording and finalizes the video file.
+The response includes duration and file size.
+Video is saved directly to: `{TEST_FOLDER}/recording/recording.mp4`
 
-### Step 3: Wait for Video Script to Complete
-
-**Tool:** `Bash`
-```bash
-# Wait for recording script to finish (pulls video from device)
-for i in {1..30}; do
-    kill -0 {VIDEO_PID} 2>/dev/null || break
-    sleep 1
-done
-echo "Video script completed"
-```
-
-This waits up to 30 seconds for the video to be pulled from device.
-
-### Step 4: Stop Touch Monitor
+### Step 3: Stop Touch Monitor
 
 **Tool:** `Bash`
 ```bash
 kill {TOUCH_PID} 2>/dev/null && echo "Touch monitor stopped" || echo "Already stopped"
 ```
 
-### Step 5: Verify Video File
+### Step 4: Verify Video File
 
 **Tool:** `Bash`
 ```bash
-# Check video exists and is valid (has moov atom)
+# Check video exists and is valid
 ls -la {TEST_FOLDER}/recording/recording.mp4
 ffprobe -v error -show_entries format=format_name -of default=noprint_wrappers=1:nokey=1 {TEST_FOLDER}/recording/recording.mp4
 ```
 
-**If ffprobe fails with "moov atom not found":**
-- Video is corrupted
-- Show warning but continue with touch_events.json (will use coordinates only)
+**If ffprobe fails:** Video may be corrupted. Show warning but continue with touch_events.json.
 
 **If ffprobe succeeds:** Video is valid, continue.
 
-### Step 6: Load Touch Events
+### Step 5: Load Touch Events
 
 **Tool:** `Read` file `{TEST_FOLDER}/recording/touch_events.json`
 
@@ -110,7 +95,7 @@ Tips:
 
 **If events found:** Store as `{TOUCH_EVENTS}` array.
 
-### Step 7: Extract Frames from Video
+### Step 6: Extract Frames from Video
 
 **Tool:** `Bash`
 ```bash
@@ -124,11 +109,11 @@ python3 ./scripts/extract-frames.py {TEST_FOLDER}/recording/recording.mp4 {TEST_
 - `step_NNN_exact.png` (at action moment)
 - `step_NNN_after_1.png` to `step_NNN_after_3.png` (100ms, 200ms, 300ms after action)
 
-### Step 8: Analyze Steps and Generate Approval UI
+### Step 7: Analyze Steps and Generate Approval UI
 
 For each touch event, analyze the before and after frames to provide smart descriptions for the approval UI.
 
-#### Step 8.1: Detect Typing Sequences
+#### Step 7.1: Detect Typing Sequences
 
 **Tool:** `Bash`
 ```bash
@@ -145,7 +130,7 @@ This script analyzes touch patterns to detect keyboard typing sequences using:
 
 **If script fails:** Continue without typing detection (user can add type commands manually in UI).
 
-#### Step 8.2: Get Screenshot List
+#### Step 7.2: Get Screenshot List
 
 **Tool:** `Glob` pattern `{TEST_FOLDER}/recording/screenshots/step_*_before_*.png`
 
@@ -153,13 +138,13 @@ Store the list of screenshot files. Extract step numbers from filenames.
 
 **Count unique steps:** Each step has multiple before/after frames. Count unique step numbers.
 
-#### Step 8.3: Analyze Steps in Parallel (5 Agents)
+#### Step 7.3: Analyze Steps in Parallel (5 Agents)
 
 Analyze steps using parallel agents for faster processing.
 
-**Step 8.3.1: Calculate step batches**
+**Step 7.3.1: Calculate step batches**
 
-Total steps: `{STEP_COUNT}` (from unique step numbers in Step 8.2)
+Total steps: `{STEP_COUNT}` (from unique step numbers in Step 7.2)
 
 Split steps into 5 batches (or fewer if less than 5 steps):
 - Batch 1: steps 1 to ceil(N/5)
@@ -168,7 +153,7 @@ Split steps into 5 batches (or fewer if less than 5 steps):
 
 **Example:** 29 steps → batches of [1-6], [7-12], [13-18], [19-24], [25-29]
 
-**Step 8.3.2: Dispatch parallel agents**
+**Step 7.3.2: Dispatch parallel agents**
 
 **Tool:** `Task` with subagent_type="step-analyzer" (dispatch ALL agents in ONE message)
 
@@ -183,7 +168,7 @@ output_file: {TEST_FOLDER}/recording/analysis_batch_{N}.json
 
 **CRITICAL:** Send all Task tool calls in a single message to enable parallel execution.
 
-**Step 8.3.3: Collect and merge results**
+**Step 7.3.3: Collect and merge results**
 
 After all agents complete, read each batch file and merge:
 
@@ -213,7 +198,7 @@ Merge all batch results into a single analysis object.
 }
 ```
 
-#### Step 8.4: Build Analysis Data
+#### Step 7.4: Build Analysis Data
 
 Create the analysis data structure combining all step analyses:
 
@@ -242,15 +227,15 @@ Create the analysis data structure combining all step analyses:
 
 Write the complete analysis data as JSON.
 
-#### Step 8.4.5: Branch by Recording Type
+#### Step 7.4.5: Branch by Recording Type
 
 **If `{RECORDING_TYPE}` is "precondition":**
-- Go to Step 8.7 (Generate Precondition YAML)
+- Go to Step 7.7 (Generate Precondition YAML)
 
 **Otherwise:**
-- Continue to Step 8.5 (Generate Approval UI)
+- Continue to Step 7.5 (Generate Approval UI)
 
-#### Step 8.5: Generate Approval UI
+#### Step 7.5: Generate Approval UI
 
 **Tool:** `Bash`
 ```bash
@@ -263,7 +248,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/generate-approval.py" \
 
 **If script fails:** Show error and provide fallback instructions for manual YAML creation.
 
-#### Step 8.6: Open Approval UI
+#### Step 7.6: Open Approval UI
 
 **Tool:** `Bash`
 ```bash
@@ -272,7 +257,7 @@ open "{TEST_FOLDER}/approval.html"
 
 **Note:** On Linux, use `xdg-open` instead of `open`.
 
-#### Step 8.7: Generate Precondition YAML (for precondition recordings only)
+#### Step 7.7: Generate Precondition YAML (for precondition recordings only)
 
 **This step only runs if `{RECORDING_TYPE}` is "precondition".**
 
@@ -342,7 +327,7 @@ verify:
 mkdir -p tests/preconditions && cp "{PRECONDITION_FOLDER}/precondition.yaml" "tests/preconditions/{PRECONDITION_NAME}.yaml"
 ```
 
-#### Step 8.8: Output Precondition Results (for precondition recordings only)
+#### Step 7.8: Output Precondition Results (for precondition recordings only)
 
 **This step only runs if `{RECORDING_TYPE}` is "precondition".**
 
@@ -386,9 +371,9 @@ Conditional check:
 }
 ```
 
-**Stop here for precondition recordings** - do not continue to Step 9 or 10.
+**Stop here for precondition recordings** - do not continue to Step 8 or 9.
 
-### Step 9: Update Recording State
+### Step 8: Update Recording State
 
 **Tool:** `Write` to `.claude/recording-state.json`
 
@@ -401,7 +386,7 @@ Conditional check:
 }
 ```
 
-### Step 10: Output Results
+### Step 9: Output Results
 
 Output to user:
 
