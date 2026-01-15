@@ -29,6 +29,8 @@ testing:
 - [Device Testing](#device-testing)
 - [Figma Integration](#figma-integration)
 - [Output Preferences](#output-preferences)
+- [Theme Configuration](#theme-configuration) *(new in v0.6.0)*
+- [Component Library](#component-library) *(new in v0.6.0)*
 
 ---
 
@@ -289,6 +291,125 @@ output:
 
 ---
 
+## Theme Configuration
+
+*New in v0.6.0*
+
+Controls the theme wrapper used during device testing. When configured, device tests render your component inside your app's actual theme instead of the generic MaterialTheme.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `composable` | string | `""` (empty) | Full path to theme composable |
+
+### `composable`
+
+Specifies the fully-qualified name of your theme composable:
+- **Empty string** (default) - Uses `MaterialTheme` as wrapper
+- **Full path** - Uses your custom theme (e.g., `"com.yourapp.ui.theme.AppTheme"`)
+
+### Example
+
+```yaml
+theme:
+  composable: "com.yourapp.ui.theme.AppTheme"
+```
+
+**Result in test activity:**
+
+```kotlin
+import com.yourapp.ui.theme.AppTheme
+
+setContent {
+    AppTheme {  // Your theme instead of MaterialTheme
+        YourComponent()
+    }
+}
+```
+
+---
+
+## Component Library
+
+*New in v0.6.0*
+
+Specifies reusable components that the design generator should prefer over generating new code. Auto-populate this section by running `/compose-design scan-components`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `buttons` | list | Button components |
+| `cards` | list | Card components |
+| `inputs` | list | Input/TextField components |
+| `lists` | list | List item components |
+| `other` | list | Other reusable components |
+
+### Component Entry Fields
+
+Each component entry has:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Component function name |
+| `import` | string | Full import path |
+| `use_when` | string | Hints for when to use this component |
+| `signature` | string | Function signature |
+
+### `use_when` Hints
+
+The `use_when` field helps the design generator match design elements to library components:
+- Use comma-separated keywords describing when to use the component
+- Include synonyms and common use cases
+- The generator matches design context against these hints
+
+### Example
+
+```yaml
+component_library:
+  buttons:
+    - name: "PrimaryButton"
+      import: "com.yourapp.ui.components.PrimaryButton"
+      use_when: "primary action, submit, confirm, main CTA"
+      signature: "(text: String, onClick: () -> Unit, modifier: Modifier)"
+
+    - name: "SecondaryButton"
+      import: "com.yourapp.ui.components.SecondaryButton"
+      use_when: "secondary action, cancel, alternative"
+      signature: "(text: String, onClick: () -> Unit, modifier: Modifier)"
+
+  cards:
+    - name: "ContentCard"
+      import: "com.yourapp.ui.components.ContentCard"
+      use_when: "card container, elevated content, content wrapper"
+      signature: "(modifier: Modifier, content: @Composable () -> Unit)"
+
+  inputs:
+    - name: "AppTextField"
+      import: "com.yourapp.ui.components.AppTextField"
+      use_when: "text input, form field, user input"
+      signature: "(value: String, onValueChange: (String) -> Unit, modifier: Modifier)"
+```
+
+### Auto-Generation
+
+Run `/compose-design scan-components` to auto-generate this section:
+
+```bash
+# Scan default output directory
+/compose-design scan-components
+
+# Scan specific path
+/compose-design scan-components --path app/src/main/java/ui/components
+```
+
+The command:
+1. Finds all `@Composable` functions in the scan path
+2. Categorizes by naming (Button, Card, Input, etc.)
+3. Infers `use_when` hints from function names
+4. Updates your config with the component library
+
+After scanning, review and adjust `use_when` hints for accuracy.
+
+---
+
 ## Complete Example
 
 Full configuration with all options:
@@ -344,6 +465,24 @@ output:
   default_output_dir: "app/src/main/java"
   include_comments: false
   extract_theme_from_existing: true
+
+# Theme for device testing (v0.6.0+)
+theme:
+  composable: "com.yourapp.ui.theme.AppTheme"
+
+# Component library for reuse (v0.6.0+)
+# Auto-generate with: /compose-design scan-components
+component_library:
+  buttons:
+    - name: "PrimaryButton"
+      import: "com.yourapp.ui.components.PrimaryButton"
+      use_when: "primary action, submit, confirm"
+      signature: "(text: String, onClick: () -> Unit, modifier: Modifier)"
+  cards:
+    - name: "ContentCard"
+      import: "com.yourapp.ui.components.ContentCard"
+      use_when: "card container, elevated content"
+      signature: "(modifier: Modifier, content: @Composable () -> Unit)"
 ```
 
 ---
