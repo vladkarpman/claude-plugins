@@ -8,7 +8,7 @@
     {
       "name": "claude-skills",
       "description": "A collection of reusable skills for Claude (prompt-improver, etc.)",
-      "version": "1.4.0",
+      "version": "1.4.1",
       "source": {
         "source": "github",
         "repo": "vladkarpman/claude-skills"
