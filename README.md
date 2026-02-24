@@ -16,7 +16,7 @@ claude plugin install claude-skills
 
 | Plugin | Description | Commands |
 |--------|-------------|----------|
-| [claude-skills](https://github.com/vladkarpman/claude-skills) | Reusable skills for prompt engineering and CV tailoring | `/improve-prompt`, `/build-prompt` + `cv-tailor` skill |
+| [claude-skills](https://github.com/vladkarpman/claude-skills) | Reusable skills for prompt engineering, task orchestration, and CV tailoring | `/improve-prompt`, `/build-prompt`, `/think` + `cv-tailor` skill |
 
 ## For Non-CLI Users
 
